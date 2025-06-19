@@ -3,24 +3,40 @@ import numpy as np
 import ray
 import sys
 
-from appworld import AppWorld, load_task_ids, update_root
+from appworld import AppWorld, load_task_ids
 
-update_root(os.path.join(os.path.dirname(__file__), "appworld"))
+def load_available_ports(port_file="appworld_ports.ports"):
+    """
+    Load available port list from file
+    """
+    if not os.path.exists(port_file):
+        raise FileNotFoundError(f"Port file {port_file} does not exist. Please run the service startup script first.")
+    
+    ports = []
+    with open(port_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and line.isdigit():
+                ports.append(int(line))
+    
+    if not ports:
+        raise ValueError(f"No valid ports found in port file {port_file}.")
+    
+    return ports
 
-@ray.remote(num_cpus=0.25)
+@ray.remote(num_cpus=0.1)
 class AppWorldWorker:
     """
     Ray Actor that holds an instance of AppWorld and operates the environment
     based on method calls from the main process.
     """
-    def __init__(self, worker_id, max_interactions):
+    def __init__(self, worker_id, max_interactions, port):
         self.env = None
         self.current_step_count = 0
         self.max_interactions = max_interactions
         self.worker_id = worker_id
         
-        self.url_id = 8000 + worker_id
-        self.url = f"http://0.0.0.0:{self.url_id}"
+        self.url = f"http://0.0.0.0:{port}"
 
     def reset(self, task_id):
         """Reset the environment with a new task."""
@@ -53,12 +69,14 @@ class AppWorldWorker:
 
         done = self.env.task_completed() or (self.current_step_count >= self.max_interactions)
 
-        reward = 10.0 if self.env.task_completed() else 0.0
+        if done:
+            is_success = self.env.evaluate().success
 
-        info = {
-            "won": self.env.task_completed(),
-            "step_count": self.current_step_count
-        }
+            reward = 10.0 if is_success else 0.0
+            info = {"won": is_success, "step_count": self.current_step_count}
+        else:
+            reward = 0.0
+            info = {"won": False, "step_count": self.current_step_count}
 
         return obs, reward, done, info
 
@@ -81,6 +99,7 @@ class AppWorldEnvs:
                  env_num,
                  group_n,
                  start_server_id,
+                 port_file="appworld_ports.ports"
                  ):
         super().__init__()
 
@@ -90,6 +109,20 @@ class AppWorldEnvs:
         self.group_n = group_n
         self.num_processes = env_num * group_n
         self.task_ids = load_task_ids(dataset_name)
+   
+        if self.env_num > len(self.task_ids):
+            raise ValueError(f"Env_num ({self.env_num}) exceeds available task_ids in '{self.dataset_name}' ({len(self.task_ids)}). Please reducing env_num to {len(self.task_ids)}.")
+            
+        all_ports = load_available_ports(port_file)
+
+        self.available_ports = all_ports[start_server_id:start_server_id + self.num_processes]
+
+        # Check if we have enough ports
+        if len(self.available_ports) < self.num_processes:
+            raise ValueError(
+                f"Need {self.num_processes} ports, but only {len(self.available_ports)} available ports. "
+                f"Please ensure enough service instances are started."
+            )
 
         # Initialize Ray if not already initialized
         if not ray.is_initialized():
@@ -98,9 +131,11 @@ class AppWorldEnvs:
         # Create Ray actors (workers)
         self.workers = []
         for i in range(self.num_processes):
+            port = self.available_ports[i]
             worker = AppWorldWorker.remote(
                 worker_id=start_server_id + i,
-                max_interactions=self.max_interactions
+                max_interactions=self.max_interactions,
+                port=port
             )
             self.workers.append(worker)
 

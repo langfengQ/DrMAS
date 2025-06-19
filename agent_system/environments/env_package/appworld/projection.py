@@ -13,7 +13,6 @@ def appworld_projection(actions: List[str]):
 
     for i in range(len(actions)):
         original_str = actions[i]  # keep the original string
-        actions[i] = actions[i].lower()
 
         # Attempt to extract the substring within <code>...</code>
         start_tag = "<code>"
@@ -29,7 +28,7 @@ def appworld_projection(actions: List[str]):
                 continue
 
             # Extract just the content between the tags
-            extracted_action = actions[i][start_idx + len(start_tag):end_idx].strip().lower()
+            extracted_action = actions[i][start_idx + len(start_tag):end_idx]
 
             actions[i] = extracted_action
             valids[i] = 1

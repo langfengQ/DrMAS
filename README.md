@@ -130,7 +130,7 @@ conda create -n verl-agent python==3.12 -y
 conda activate verl-agent
 
 pip3 install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
-pip3 install flash-attn --no-build-isolation
+pip3 install flash-attn==2.7.4.post1 --no-build-isolation
 
 pip3 install -e .
 
@@ -220,34 +220,24 @@ pip3 install stable-baselines3==2.6.0
 ```
 ---
 ### 5. APPWorld (Experimental)
-Install APPWorld package in `verl-agent` (some warnings may be raised, you can ignore them)
+Install APPWorld package
 ```bash
 cd repo_root/
-cd ./agent_system/environments/env_package/appworld/appworld
-pip install -e .
-python -m appworld.cli install
-appworld download data
-
-cd repo_root/
-appworld download data
-```
-
-Refresh dependencies in the `verl-agent` environment:
-```bash
-cd repo_root/
+# Install and download:
+pip install git+https://github.com/StonyBrookNLP/appworld.git
+appworld install
 pip install -e .
 pip install vllm==0.8.5
 ```
 You can ignore the warning of incompatiblity for appworld, because we don't run appworld in `verl-agent` environment.
 
-Create a Dedicated Conda Environment `appworld` for the APPWorld Server:
+Create a dedicated conda environment `appworld` for the APPWorld server:
 ```bash
 conda create -n appworld python=3.12 -y
 conda activate appworld
-
-cd ./agent_system/environments/env_package/appworld/appworld
-pip install -e .
-python -m appworld.cli install
+pip install git+https://github.com/StonyBrookNLP/appworld.git
+appworld install
+appworld download data
 ```
 
 

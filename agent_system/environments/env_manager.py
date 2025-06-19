@@ -512,7 +512,11 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
                     step_number = start_index + j + 1
                     action = record["action"]
                     env_obs = record["text_obs"]
-                    action_history += f"\n[Observation {step_number}: '{env_obs}', Code {step_number}: '{action}']"
+                    action_history += f"\nObservation {step_number}: \n{env_obs}\nCode {step_number}: \n{action}\n"
+                
+                if len(action_history) > 50000:
+                    print(f"Warning len(action_history)={len(action_history)} is too long")
+                    action_history = action_history[-50000:]
 
                 obs = APPWORLD_TEMPLATE.format(
                         supervisor_first_name=self.supervisors[i]['first_name'],
@@ -524,6 +528,7 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
                         history_length=valid_history_length,
                         action_history=action_history.strip(),
                         current_step=len(self.buffers[i]) + 1,
+                        current_observation=text_obs[i],
                     )
                 postprocess_text_obs.append(obs)
         return postprocess_text_obs
