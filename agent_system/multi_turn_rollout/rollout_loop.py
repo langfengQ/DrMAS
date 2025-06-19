@@ -2,14 +2,11 @@ import torch
 import numpy as np
 from verl import DataProto
 from verl.utils.dataset.rl_dataset import collate_fn
-from verl.utils.model import compute_position_id_with_mask
-import verl.utils.torch_functional as verl_F
 from transformers import PreTrainedTokenizer
 import uuid
-from verl.models.transformers.qwen2_vl import get_rope_index
-from agent_system.multi_turn_rollout.utils import process_image, to_list_of_dict, torch_to_numpy, filter_group_data
+from agent_system.multi_turn_rollout.utils import to_list_of_dict, torch_to_numpy, filter_group_data, preprocess_batch
 from agent_system.environments import EnvironmentManagerBase
-from typing import List, Dict
+from typing import List, Dict, Any, Optional
 
 class TrajectoryCollector:
     def __init__(self, config, tokenizer: PreTrainedTokenizer, processor=None):
@@ -24,172 +21,6 @@ class TrajectoryCollector:
         self.config = config
         self.tokenizer = tokenizer
         self.processor = processor
-
-    def preprocess_single_sample(
-        self,
-        item: int,
-        gen_batch: DataProto,
-        obs: Dict,
-    ):
-        """
-        Process a single observation sample, organizing environment observations (text and/or images) 
-        into a format processable by the model.
-        
-        Parameters:
-            item (int): Sample index in the batch
-            gen_batch (DataProto): Batch data containing original prompts
-            obs (Dict): Environment observation, may contain 'text', 'image', 'anchor' keys
-        
-        Returns:
-            dict: Contains processed input data such as input_ids, attention_mask, etc.
-        """
-
-        raw_prompt = gen_batch.non_tensor_batch['raw_prompt'][item]
-        data_source = gen_batch.non_tensor_batch['data_source'][item]
-        
-        # Get observation components
-        obs_texts = obs.get('text', None)
-        obs_images = obs.get('image', None)
-        obs_anchors = obs.get('anchor', None)
-        obs_text = obs_texts[item] if obs_texts is not None else None
-        obs_image = obs_images[item] if obs_images is not None else None
-        obs_anchor = obs_anchors[item] if obs_anchors is not None else None
-        is_multi_modal = obs_image is not None
-
-        _obs_anchor = torch_to_numpy(obs_anchor, is_object=True) if isinstance(obs_anchor, torch.Tensor) else obs_anchor
-
-        # Build chat structure
-        # obs_content = raw_prompt[0]['content']
-        # if '<image>' in obs_content: 
-        #     obs_content = obs_content.replace('<image>', '')
-
-        # Build chat structure
-        obs_content = ''
-        if obs_text is not None:
-            obs_content += obs_text
-        else:
-            print(f"Warning: No text observation found!")
-
-        
-        chat = np.array([{
-            "content": obs_content,
-            "role": "user",
-        }])
-        
-        # Apply chat template
-        prompt_with_chat_template = self.tokenizer.apply_chat_template(
-            chat,
-            add_generation_prompt=True,
-            tokenize=False
-        )
-        
-        # Initialize return dict
-        row_dict = {}
-        
-        # Process multimodal data
-        if is_multi_modal:
-            # Replace image placeholder with vision tokens
-            raw_prompt = prompt_with_chat_template.replace('<image>', '<|vision_start|><|image_pad|><|vision_end|>')
-            row_dict['multi_modal_data'] = {'image': [process_image(obs_image)]}
-            image_inputs = self.processor.image_processor(row_dict['multi_modal_data']['image'], return_tensors='pt')
-            image_grid_thw = image_inputs['image_grid_thw']
-            row_dict['multi_modal_inputs'] = {key: val for key, val in image_inputs.items()}
-            if image_grid_thw is not None:
-                merge_length = self.processor.image_processor.merge_size**2
-                index = 0
-                while '<image>' in prompt_with_chat_template:
-                    prompt_with_chat_template = prompt_with_chat_template.replace(
-                        '<image>',
-                        '<|vision_start|>' + '<|placeholder|>' * (image_grid_thw[index].prod() // merge_length) +
-                        '<|vision_end|>',
-                        1,
-                    )
-                    index += 1
-
-                prompt_with_chat_template = prompt_with_chat_template.replace('<|placeholder|>',
-                                                                                self.processor.image_token)
-
-        else:
-            raw_prompt = prompt_with_chat_template
-        
-        input_ids, attention_mask = verl_F.tokenize_and_postprocess_data(prompt=prompt_with_chat_template,
-                                                                            tokenizer=self.tokenizer,
-                                                                            max_length=self.config.data.max_prompt_length,
-                                                                            pad_token_id=self.tokenizer.pad_token_id,
-                                                                            left_pad=True,
-                                                                            truncation='error')
-        
-        
-
-        if is_multi_modal:
-
-            position_ids = get_rope_index(
-                self.processor,
-                input_ids=input_ids[0],
-                image_grid_thw=image_grid_thw,
-                attention_mask=attention_mask[0],
-            )  # (3, seq_len)
-        else:
-            position_ids = compute_position_id_with_mask(attention_mask)
-        
-        # Build final output dict
-        row_dict.update({
-            'input_ids': input_ids[0],
-            'attention_mask': attention_mask[0],
-            'position_ids': position_ids[0],
-            'raw_prompt_ids': self.tokenizer.encode(raw_prompt, add_special_tokens=False),
-            'anchor_obs': _obs_anchor,
-            'index': item,
-            'data_source': data_source
-        })
-
-        if self.config.data.get('return_raw_chat', False):
-            row_dict['raw_prompt'] = chat.tolist()
-        
-        return row_dict
-
-    def preprocess_batch(
-        self,
-        gen_batch: DataProto, 
-        obs: Dict, 
-    ) -> DataProto:
-        """
-        Process a batch of observation samples, converting environment observations into model-processable format.
-        
-        Parameters:
-            gen_batch (DataProto): Batch data containing original prompts
-            obs (Dict): Environment observation dictionary
-                - 'text' (None or List[str]): Text observation data
-                - 'image' (np.ndarray or torch.Tensor): Image observation data
-                - 'anchor' (None or Any): Anchor observation without any histories or additional info. (for GiGPO only).
-        
-        Returns:
-            DataProto: Contains processed batch data with preserved metadata
-        """
-        batch_size = len(gen_batch.batch['input_ids'])
-        processed_samples = []
-        
-        # Process each sample in parallel
-        for item in range(batch_size):
-            # Extract per-sample observations
-            processed = self.preprocess_single_sample(
-                item=item,
-                gen_batch=gen_batch,
-                obs=obs,
-            )
-            processed_samples.append(processed)
-        
-        # Aggregate batch data
-        batch = collate_fn(processed_samples)
-        
-        # Create DataProto with preserved metadata
-        new_batch = DataProto.from_single_dict(
-            data=batch,
-            meta_info=gen_batch.meta_info
-        )
-
-        return new_batch
-
 
     def gather_rollout_data(
             self,
@@ -306,7 +137,12 @@ class TrajectoryCollector:
         for _step in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
 
-            batch = self.preprocess_batch(gen_batch=gen_batch, obs=obs)
+            batch = preprocess_batch(gen_batch=gen_batch, 
+                                     obs=obs, 
+                                     config=self.config, 
+                                     tokenizer=self.tokenizer, 
+                                     processor=self.processor,
+                                     )
 
             batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
             non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
@@ -495,3 +331,134 @@ class TrajectoryCollector:
         )
         
         return gen_batch_output
+
+
+from agent_system.multiagent import ChainExecutor, HierarchicalExecutor, BaseExecutor  # execution strategies
+# =============================================================================
+# Multi‑Agent collector orchestrating a *team* of agents
+# =============================================================================
+class MultiAgentTrajectoryCollector(TrajectoryCollector):
+    """Trajectory collector that *delegates* action generation to a
+    user‑configurable :class:`BaseExecutor` (chain, hierarchy, etc.)."""
+
+    # ------------------------------------------------------------------
+    def __init__(
+        self,
+        config: Any,
+        tokenizer: PreTrainedTokenizer,
+        processor: Any = None,
+        executor_type: str = "chain",  # "chain" | "hierarchy" or custom
+        agent_names: Optional[List[str]] = None,  # default comes from BaseExecutor
+    ):
+        super().__init__(config=config, tokenizer=tokenizer, processor=processor)
+
+        if executor_type == "chain":
+            self.multiagent_executor: BaseExecutor = ChainExecutor(
+                agent_names=agent_names,
+                tokenizer=tokenizer,
+                processor=processor,
+                config=config,
+            )
+        elif executor_type == "hierarchy":
+            self.multiagent_executor: BaseExecutor = HierarchicalExecutor(
+                agent_names=agent_names,
+                tokenizer=tokenizer,
+                processor=processor,
+                config=config,
+            )
+        else:
+            raise ValueError(f"Unknown executor_type '{executor_type}'.")
+
+    # ------------------------------------------------------------------
+    def vanilla_multi_turn_loop(  # noqa: D401 – doc in base class
+        self,
+        gen_batch: DataProto,
+        actor_rollout_wg,
+        envs: EnvironmentManagerBase,
+    ):
+        obs, infos = envs.reset()
+
+        # Initialize trajectory collection
+        lenght_obs = len(obs['text']) if obs['text'] is not None else len(obs['image'])
+        if len(gen_batch.batch) != lenght_obs and self.config.env.rollout.n > 0:
+            gen_batch = gen_batch.repeat(repeat_times=self.config.env.rollout.n, interleave=True)
+        assert len(gen_batch.batch) == lenght_obs, f"gen_batch size {len(gen_batch.batch)} does not match obs size {lenght_obs}"
+
+        batch_size = len(gen_batch.batch['input_ids'])
+        batch_output = None
+        
+        if self.config.env.rollout.n > 0: # env grouping
+            uid_batch = []
+            for i in range(batch_size):
+                if i % self.config.env.rollout.n == 0:
+                    uid = str(uuid.uuid4())
+                uid_batch.append(uid)
+            uid_batch = np.array(uid_batch, dtype=object)
+        else: # no env grouping, set all to the same uid
+            uid = str(uuid.uuid4())
+            uid_batch = np.array([uid for _ in range(len(gen_batch.batch))], dtype=object)
+        is_done = np.zeros(batch_size, dtype=bool)
+        traj_uid = np.array([str(uuid.uuid4()) for _ in range(batch_size)], dtype=object)
+        total_batch_list = [[] for _ in range(batch_size)]
+        total_infos = [[] for _ in range(batch_size)]
+        episode_lengths = np.zeros(batch_size, dtype=np.int32)
+        episode_rewards = np.zeros(batch_size, dtype=np.float32)
+        # Trajectory collection loop
+        for _step in range(self.config.env.max_steps):
+            active_masks = np.logical_not(is_done)
+
+            ###############################
+            text_actions, self.multiagent_batch_buffer = self.multiagent_executor.run(
+                gen_batch=gen_batch,
+                env_obs=obs,
+                actor_rollout_wg=actor_rollout_wg,
+            )
+
+            next_obs, rewards, dones, infos = envs.step(text_actions)
+            ###############################
+            batch.non_tensor_batch['uid'] = uid_batch
+            batch.non_tensor_batch['traj_uid'] = traj_uid
+            if len(rewards.shape) == 2:
+                rewards = rewards.squeeze(1)
+            if len(dones.shape) == 2:
+                # dones is numpy, delete a dimension
+                dones = dones.squeeze(1)
+
+            if 'is_action_valid' in infos[0]:
+                batch.non_tensor_batch['is_action_valid'] = np.array([info['is_action_valid'] for info in infos], dtype=bool)
+            else:
+                batch.non_tensor_batch['is_action_valid'] = np.ones(batch_size, dtype=bool)
+
+            # Create reward tensor, only assign rewards for active environments
+            episode_rewards += torch_to_numpy(rewards) * torch_to_numpy(active_masks)
+            episode_lengths[active_masks] += 1
+
+            assert len(rewards) == batch_size, f"env should return rewards for all environments, got {len(rewards)} rewards for {batch_size} environments"
+            batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
+            batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
+            
+            # Update episode lengths for active environments
+            batch_list: list[dict] = to_list_of_dict(batch)
+
+            for i in range(batch_size):
+                total_batch_list[i].append(batch_list[i])
+                total_infos[i].append(infos[i])
+
+            # Update done states
+            is_done = np.logical_or(is_done, dones)
+                
+            # Update observations for next step
+            obs = next_obs
+
+            # Break if all environments are done
+            if is_done.all():
+                break
+        
+        success: Dict[str, np.ndarray] = envs.success_evaluator(
+                    total_infos=total_infos,
+                    total_batch_list=total_batch_list,
+                    episode_rewards=episode_rewards, 
+                    episode_lengths=episode_lengths,
+                    )
+        
+        return total_batch_list, episode_rewards, episode_lengths, success, traj_uid
