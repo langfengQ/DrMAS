@@ -17,20 +17,17 @@ print(apis.api_docs.show_api_doc(app_name='supervisor', api_name='show_account_p
 
 Each code execution will produce an output that you can use in subsequent calls. Using these APIs, you can now generate code, that the environment will execute, to solve the task.
 
-----------------------------------------------
+-----------------------------
 Here is an example:
 
 My name is: supervisor_first_name supervisor_last_name. My personal email is supervisor_email and phone number is supervisor_phone_number.
 
 Your task is: What is the password for my Spotify account?
 
-Observation 1: 
-What is the password for my Spotify account?
-
-Code 1: 
+Code 1:
 print(apis.api_docs.show_app_descriptions())
 
-Observation 2: 
+Result 1: 
 [
   {{
     "name": "api_docs",
@@ -52,20 +49,20 @@ Observation 2:
   ...
 ]
 
-Code 2: 
+Code 2:
 print(apis.api_docs.show_api_descriptions(app_name='supervisor'))
 
-Observation 3: 
+Result 2:
 [
   ...
   "show_account_passwords : Show your supervisor's account passwords."
   ...
 ]
 
-Code 3: 
+Code 3:
 print(apis.api_docs.show_api_doc(app_name='supervisor', api_name='show_account_passwords'))
 
-Observation 4: 
+Result 3:
 {{
   'app_name': 'supervisor',
   'api_name': 'show_account_passwords',
@@ -79,10 +76,10 @@ Observation 4:
   }}
 }}
 
-Code 4: 
+Code 4:
 print(apis.supervisor.show_account_passwords())
 
-Observation 5: 
+Result 4:
 [
   {{
     "account_name": "spotify",
@@ -95,25 +92,23 @@ Observation 5:
   ...
 ]
 
-Code 5: 
+Code 5:
 # So the Spotify password is an entry in the `passwords` list with the account_name=spotify.
 spotify_password = [account_password["account_name"] == "spotify" for account_password in passwords][0]["password"]
 print(spotify_password)
 
-Observation 6: 
+Result 5:
 dummy_spotify_pass
 
-Code 6: 
+Code 6:
 # When the task is completed, I need to call apis.supervisor.complete_task(). If there is an answer, I need to pass it as an argument `answer`. I will pass the spotify_password as an answer.
 apis.supervisor.complete_task(answer=spotify_password)
 
-Observation 7: 
+Result 6:
 Marked the active task complete.
+-----------------------------
 
-----------------------------------------------
-
-**Key instructions and disclaimers**:
-
+Key Instructions and Disclaimers:
 1. The email addresses, access tokens and variables (e.g. spotify_password) in the example above were only for demonstration. Obtain the correct information by calling relevant APIs yourself.
 2. Only generate valid code blocks, i.e., do not put them in ```...``` or add any extra formatting. Any thoughts should be put as code comments.
 3. You can use the variables from the previous code blocks in the subsequent code blocks.
@@ -161,20 +156,17 @@ print(apis.api_docs.show_api_doc(app_name='supervisor', api_name='show_account_p
 
 Each code execution will produce an output that you can use in subsequent calls. Using these APIs, you can now generate code, that the environment will execute, to solve the task.
 
-----------------------------------------------
+-----------------------------
 Here is an example:
 
 My name is: supervisor_first_name supervisor_last_name. My personal email is supervisor_email and phone number is supervisor_phone_number.
 
 Your task is: What is the password for my Spotify account?
 
-Observation 1:
-What is the password for my Spotify account?
-
 Code 1:
 print(apis.api_docs.show_app_descriptions())
 
-Observation 2: 
+Result 1: 
 [
   {{
     "name": "api_docs",
@@ -199,7 +191,7 @@ Observation 2:
 Code 2:
 print(apis.api_docs.show_api_descriptions(app_name='supervisor'))
 
-Observation 3:
+Result 2:
 [
   ...
   "show_account_passwords : Show your supervisor's account passwords."
@@ -209,7 +201,7 @@ Observation 3:
 Code 3:
 print(apis.api_docs.show_api_doc(app_name='supervisor', api_name='show_account_passwords'))
 
-Observation 4:
+Result 3:
 {{
   'app_name': 'supervisor',
   'api_name': 'show_account_passwords',
@@ -226,7 +218,7 @@ Observation 4:
 Code 4:
 print(apis.supervisor.show_account_passwords())
 
-Observation 5:
+Result 4:
 [
   {{
     "account_name": "spotify",
@@ -244,20 +236,18 @@ Code 5:
 spotify_password = [account_password["account_name"] == "spotify" for account_password in passwords][0]["password"]
 print(spotify_password)
 
-Observation 6:
+Result 5:
 dummy_spotify_pass
 
 Code 6:
 # When the task is completed, I need to call apis.supervisor.complete_task(). If there is an answer, I need to pass it as an argument `answer`. I will pass the spotify_password as an answer.
 apis.supervisor.complete_task(answer=spotify_password)
 
-Observation 7:
+Result 6:
 Marked the active task complete.
+-----------------------------
 
-----------------------------------------------
-
-**Key instructions and disclaimers**:
-
+Key Instructions and Disclaimers:
 1. The email addresses, access tokens and variables (e.g. spotify_password) in the example above were only for demonstration. Obtain the correct information by calling relevant APIs yourself.
 2. Only generate valid code blocks, i.e., do not put them in ```...``` or add any extra formatting. Any thoughts should be put as code comments.
 3. You can use the variables from the previous code blocks in the subsequent code blocks.
@@ -281,13 +271,10 @@ My name is: {supervisor_first_name} {supervisor_last_name}. My personal email is
 
 Your task is: {task_description}
 
-Prior to this step, you have already taken {step_count} step(s). Below are the most recent {history_length} codes you generated and the corresponding environment feedback: 
+Prior to this step, you have already taken {step_count} step(s). Below are the most recent {history_length} codes you generated and the corresponding environment return: 
 {action_history}
 
-You are now at step {current_step} and your current observation is: 
-{current_observation}
-
-Now it's your turn to generate code for this step.
-You should first reason step-by-step about the last histories, and think about which APIs to call, what arguments to use, and how to build your code block to complete the task. This reasoning process MUST be enclosed within <think> </think> tags. 
-Once you've finished your reasoning, you present the solution code body within <code> </code> tags.
+Now you are at step {current_step} and it's your turn to generate code for this step.
+First, you MUST carefully reflect on the history of interactions and the most recent error messages. Then, reason about what should be done next, which APIs to call, what arguments to use, and how to build your code block to complete the task. This reasoning process MUST be enclosed within <think> </think> tags.
+Once you've finished your reflexion and reasoning, you present the solution code body within <code> </code> tags.
 """

@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import ray
-import sys
+import time
 
 from appworld import AppWorld, load_task_ids
 
@@ -42,6 +42,7 @@ class AppWorldWorker:
         """Reset the environment with a new task."""
         if self.env is not None:
             self.env.close()
+            time.sleep(2)
 
         self.current_step_count = 0
 

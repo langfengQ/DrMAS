@@ -470,7 +470,7 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
 
         text_obs, rewards, dones, infos = self.envs.step(actions)
 
-        self.save_to_history_buffer(self.pre_text_obs, actions)
+        self.save_to_history_buffer(text_obs, actions)
         self.pre_text_obs = text_obs
 
         full_text_obs = self.build_text_obs(text_obs)
@@ -486,7 +486,7 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
         return next_observations, rewards, dones, infos
     
 
-    def build_text_obs(self, text_obs: List[str], init: bool = False, history_length: int = 20) -> List[str]:
+    def build_text_obs(self, text_obs: List[str], init: bool = False, history_length: int = 10) -> List[str]:
         """
         This function builds the text observation for the agent.
         """
@@ -512,11 +512,10 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
                     step_number = start_index + j + 1
                     action = record["action"]
                     env_obs = record["text_obs"]
-                    action_history += f"\nObservation {step_number}: \n{env_obs}\nCode {step_number}: \n{action}\n"
+                    action_history += f"\nCode {step_number}: \n{action}\n\nResult {step_number}: \n{env_obs}\n"
                 
-                if len(action_history) > 50000:
-                    print(f"Warning len(action_history)={len(action_history)} is too long")
-                    action_history = action_history[-50000:]
+                if len(action_history) > 10000:
+                    action_history = "... " + action_history[-10000:]
 
                 obs = APPWORLD_TEMPLATE.format(
                         supervisor_first_name=self.supervisors[i]['first_name'],

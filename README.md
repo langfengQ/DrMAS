@@ -65,11 +65,11 @@ Unlike prior approaches that simply concatenate full interaction histories, `ver
   - [Qwen3](#qwen3)
   - [LoRA](#lora)
   - [Prompt-based Agent with GPT-4o](#prompt-based-agent-with-gpt-4o)
-- [Contributing](#contributing)
-  - [1. Add New Environments](#1-add-new-environments)
 - [Tips](#tips)
   - [1. Data Preparation](#1-data-preparation)
   - [2. Customize Your Own Prompts](#2-customize-your-own-prompts)
+  - [3. Add New Environments](#3-add-new-environments)
+- [Contributing](#contributing)
 - [Acknowledgement](#acknowledgement)
 - [Citation](#citation)
 - [Star History](#star-history)
@@ -194,7 +194,7 @@ After WebShop is installed, return to the root directory of the repository and i
 ```bash
 cd repo_root/
 pip3 install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
-pip3 install flash-attn --no-build-isolation
+pip3 install flash-attn==2.7.4.post1 --no-build-isolation
 pip3 install -e .
 pip3 install vllm==0.8.5
 # spacy 3.7.2 requires typer<0.10.0,>=0.3.0, but you have typer 0.15.2 which is incompatible.
@@ -223,7 +223,6 @@ pip3 install stable-baselines3==2.6.0
 Install APPWorld package
 ```bash
 cd repo_root/
-# Install and download:
 pip install git+https://github.com/StonyBrookNLP/appworld.git
 appworld install
 pip install -e .
@@ -321,22 +320,6 @@ We also provide a prompt-based GPT-4o agent.
 bash examples/prompt_agent/run_gpt4o_agent.sh
 ```
 
-# Contributing
-
-We welcome and appreciate all contributions! If you have ideas to improve `verl-agent`, please feel free to submit a pull request (PR).
-
-## 1. Add New Environments
-To add a new environment, 
-1. Create your environment package (gym-style interface and multi-process execution) in [agent_system/environments/env_package/](./agent_system/environments/env_package/)
-2. Define the corresponding prompt files in [agent_system/environments/prompts](./agent_system/environments/prompts/). 
-3. Register your new environment in [env_manager.py](./agent_system/environments/env_manager.py), following the structure defined by [EnvironmentManagerBase](./agent_system/environments/base.py#L19). 
-
-For a reference implementation, see the webshop environment:
-1. Environment package: [webshop package](./agent_system/environments/env_package/webshop)
-2. Prompts: [webshop prompts](./agent_system/environments/prompts/webshop.py)
-3. Environment Manager: [webshop env manager](./agent_system/environments/env_manager.py#L304)
-
-
 # Tips
 
 ## 1. Data Preparation
@@ -353,7 +336,29 @@ You should first reason step-by-step about the current situation, then think car
 ```
 If you wish to further enhance or customize them, you can find and edit them in: [agent_system/environments/prompts](./agent_system/environments/prompts/).
 
-## Acknowledgement
+
+## 3. Add New Environments
+To add a new environment, 
+1. Create your environment package (gym-style interface and multi-process execution) in [agent_system/environments/env_package/](./agent_system/environments/env_package/)
+2. Define the corresponding prompt files in [agent_system/environments/prompts](./agent_system/environments/prompts/). 
+3. Register your new environment in [env_manager.py](./agent_system/environments/env_manager.py), following the structure defined by [EnvironmentManagerBase](./agent_system/environments/base.py#L19). 
+
+For a reference implementation, see the webshop environment:
+1. Environment package: [webshop package](./agent_system/environments/env_package/webshop)
+2. Prompts: [webshop prompts](./agent_system/environments/prompts/webshop.py)
+3. Environment Manager: [webshop env manager](./agent_system/environments/env_manager.py#L304)
+
+
+# Contributing
+
+We welcome and appreciate all contributions! If you have ideas to improve `verl-agent`, please feel free to submit a pull request (PR).
+
+Example contributions include:
+- **APPWorld Bug Fixes**: Fixed compatibility issues and ensured stable integration with the experimental APPWorld environment.
+- **Asynchronous Rollout**: Improved training efficiency and throughput by supporting asynchronous rollout pipelines.
+- **Additional Environments**: Added support for additional interactive environments to expand the benchmark coverage and task diversity.
+
+# Acknowledgement
 
 We gratefully acknowledge the contributions of the [veRL](https://github.com/volcengine/verl) team for providing a solid RL infrastructure.
 
@@ -361,7 +366,7 @@ Special thanks to the [RAGEN](https://github.com/RAGEN-AI/RAGEN) project for the
 
 We also thank the developers of [ALFWorld](https://github.com/alfworld/alfworld), [Sokoban](https://github.com/mpSchrader/gym-sokoban), [Gym Cards](https://github.com/RL4VLM/RL4VLM/tree/main/gym-cards), [WebShop](https://github.com/princeton-nlp/WebShop), and [AppWorld](https://github.com/stonybrooknlp/appworld) for providing high-quality interactive environments used in this project.
 
-## Citation
+# Citation
 If you find `verl-agent` and `GiGPO` useful in your research or applications, we would appreciate it if you could cite our work:
 
 ```
@@ -373,6 +378,6 @@ If you find `verl-agent` and `GiGPO` useful in your research or applications, we
 }
 ```
 
-## Star History
+# Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=langfengQ/verl-agent&type=Date)](https://www.star-history.com/#langfengQ/verl-agent&Date)
