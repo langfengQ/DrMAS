@@ -130,5 +130,5 @@ outputs
 # appworld
 data/
 .tmp
-start_appworld_server.sh
+*ports
 

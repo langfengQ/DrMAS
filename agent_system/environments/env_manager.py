@@ -74,7 +74,7 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
                 raise ValueError("Task description not found in text observation.")
         
 
-    def build_text_obs(self, text_obs: List[str], admissible_actions: List[List[str]], init: bool = False, history_length: int = 2) -> List[str]:
+    def build_text_obs(self, text_obs: List[str], admissible_actions: List[List[str]], init: bool = False, history_length: int = 5) -> List[str]:
         """
         This function builds the text observation for the agent.
         """
@@ -84,7 +84,8 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
             reformatted_admissible_actions = "\n ".join(f"'{s}'" for s in admissible_actions[i] if s != 'help')
 
             if init or history_length <= 0:
-                obs = ALFWORLD_TEMPLATE_NO_HIS.format(
+                # ALFWORLD_TEMPLATE_NO_HIS or ALFWORLD_MULTIAGENT_TEMPLATE_NO_HIS
+                obs = ALFWORLD_MULTIAGENT_TEMPLATE_NO_HIS.format(
                     current_observation=text_obs[i],
                     admissible_actions=reformatted_admissible_actions
                 )
@@ -99,7 +100,9 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
                     action = record["action"]
                     env_obs = record["text_obs"]
                     action_history += f"\n[Observation {step_number}: '{env_obs}', Action {step_number}: '{action}']"
-                obs = ALFWORLD_TEMPLATE.format(
+                
+                # ALFWORLD_TEMPLATE or ALFWORLD_MULTIAGENT_TEMPLATE
+                obs = ALFWORLD_MULTIAGENT_TEMPLATE.format(
                     task_description=self.tasks[i],
                     step_count=len(self.buffers[i]),
                     history_length=valid_history_length,
@@ -387,7 +390,7 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
         for i in range(len(actions)):
             self.buffers[i].append({'text_obs': text_obs[i], 'action': actions[i]})
             
-    def build_text_obs(self, text_obs: List[str], infos: List[List[str]], init: bool = False, history_length: int = 2) -> List[str]:
+    def build_text_obs(self, text_obs: List[str], infos: List[List[str]], init: bool = False, history_length: int = 3) -> List[str]:
         """
         This function builds the text observation for the agent.
         """
@@ -398,7 +401,8 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
             reformatted_available_actions = "\n".join(f"'{s}'," for s in available_actions)
 
             if init or history_length <= 0:
-                obs = WEBSHOP_TEMPLATE_NO_HIS.format(
+                # WEBSHOP_MULTIAGENT_TEMPLATE_NO_HIS or WEBSHOP_TEMPLATE_NO_HIS
+                obs = WEBSHOP_MULTIAGENT_TEMPLATE_NO_HIS.format(
                     task_description=self.tasks[i],
                     current_observation=text_obs[i],
                     available_actions=reformatted_available_actions
@@ -414,7 +418,12 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                     action = record["action"]
                     env_obs = record["text_obs"]
                     action_history += f"\n[Observation {step_number}: '{env_obs}', Action {step_number}: '{action}']"
-                obs = WEBSHOP_TEMPLATE.format(
+
+                if len(action_history) > 5000:
+                    action_history = "... " + action_history[-5000:]
+
+                # WEBSHOP_MULTIAGENT_TEMPLATE or WEBSHOP_TEMPLATE
+                obs = WEBSHOP_MULTIAGENT_TEMPLATE.format(
                     task_description=self.tasks[i],
                     step_count=len(self.buffers[i]),
                     history_length=valid_history_length,
@@ -423,13 +432,13 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                     current_observation=text_obs[i],
                     available_actions=reformatted_available_actions
                 )
-                if len(obs) > 13000:
-                    print(f"Warning len(obs)={len(obs)} is too long")
-                    obs = WEBSHOP_TEMPLATE_NO_HIS.format(
-                        task_description=self.tasks[i],
-                        current_observation=text_obs[i],
-                        available_actions=reformatted_available_actions
-                    )
+                # if len(obs) > 13000:
+                #     print(f"Warning len(obs)={len(obs)} is too long")
+                #     obs = WEBSHOP_TEMPLATE_NO_HIS.format(
+                #         task_description=self.tasks[i],
+                #         current_observation=text_obs[i],
+                #         available_actions=reformatted_available_actions
+                #     )
 
             postprocess_text_obs.append(obs)
 
@@ -470,7 +479,7 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
 
         text_obs, rewards, dones, infos = self.envs.step(actions)
 
-        self.save_to_history_buffer(self.pre_text_obs, actions)
+        self.save_to_history_buffer(text_obs, actions)
         self.pre_text_obs = text_obs
 
         full_text_obs = self.build_text_obs(text_obs)
@@ -486,7 +495,7 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
         return next_observations, rewards, dones, infos
     
 
-    def build_text_obs(self, text_obs: List[str], init: bool = False, history_length: int = 20) -> List[str]:
+    def build_text_obs(self, text_obs: List[str], init: bool = False, history_length: int = 10) -> List[str]:
         """
         This function builds the text observation for the agent.
         """
@@ -512,7 +521,10 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
                     step_number = start_index + j + 1
                     action = record["action"]
                     env_obs = record["text_obs"]
-                    action_history += f"\n[Observation {step_number}: '{env_obs}', Code {step_number}: '{action}']"
+                    action_history += f"\nCode {step_number}: \n{action}\n\nResult {step_number}: \n{env_obs}\n"
+                
+                if len(action_history) > 10000:
+                    action_history = "... " + action_history[-10000:]
 
                 obs = APPWORLD_TEMPLATE.format(
                         supervisor_first_name=self.supervisors[i]['first_name'],
@@ -524,6 +536,7 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
                         history_length=valid_history_length,
                         action_history=action_history.strip(),
                         current_step=len(self.buffers[i]) + 1,
+                        current_observation=text_obs[i],
                     )
                 postprocess_text_obs.append(obs)
         return postprocess_text_obs

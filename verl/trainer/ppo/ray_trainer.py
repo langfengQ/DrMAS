@@ -220,7 +220,7 @@ def apply_invalid_action_penalty(data: DataProto, invalid_action_penalty_coef=fl
             step_rewards[i] -= invalid_action_penalty_coef * action_invalids
     
     valid_action_ratio = np.mean(data.non_tensor_batch['is_action_valid'].astype(np.float32)).item()
-    metrics = {'valid_action_ratio': valid_action_ratio}
+    metrics = {'episode/valid_action_ratio': valid_action_ratio}
     return data, metrics
 
 def compute_response_mask(data: DataProto):
