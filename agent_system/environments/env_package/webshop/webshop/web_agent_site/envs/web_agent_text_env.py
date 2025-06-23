@@ -63,17 +63,9 @@ class WebAgentTextEnv(gym.Env):
         self.attr_path = attr_path
 
         self.base_url = 'http://127.0.0.1:3000'
-        self.server = SimServer(
-            self.base_url,
-            self.file_path,
-            self.attr_path,
-            self.kwargs.get('filter_goals'),
-            self.kwargs.get('limit_goals', -1),
-            self.kwargs.get('num_products'),
-            self.kwargs.get('human_goals'),
-            self.kwargs.get('show_attrs', False),
-        ) if server is None else server
-        self.browser = SimBrowser(self.server)
+        
+        self.server = None
+        self.browser = None
 
         self.session = self.kwargs.get('session')
         self.session_prefix = self.kwargs.get('session_prefix')
@@ -85,7 +77,25 @@ class WebAgentTextEnv(gym.Env):
         self.prev_actions = []
         self.num_prev_obs = self.kwargs.get('num_prev_obs', 0)
         self.num_prev_actions = self.kwargs.get('num_prev_actions', 0)
-        self.reset()
+        self.initialized = False
+
+    def initialize(self, goals = None):
+        """
+        Initialize the server and browser
+        """
+        self.server = SimServer(
+                    self.base_url,
+                    self.file_path,
+                    self.attr_path,
+                    self.kwargs.get('filter_goals'),
+                    self.kwargs.get('limit_goals', -1),
+                    self.kwargs.get('num_products'),
+                    self.kwargs.get('human_goals'),
+                    self.kwargs.get('show_attrs', False),
+                    specified_goals  = goals
+                )
+        self.browser = SimBrowser(self.server)
+        self.initialized = True
 
     def step(self, action):
         """
@@ -245,6 +255,8 @@ class WebAgentTextEnv(gym.Env):
     
     def reset(self, session=None, instruction_text=None):
         """Create a new session and reset environment variables"""
+        if not self.initialized:
+            raise("Please initialize the environment by `initialize()` before calling `reset()`")
         session_int = None
         if session is not None:
             self.session = str(session)
@@ -291,6 +303,7 @@ class SimServer:
         num_products=None,
         human_goals=0,
         show_attrs=False,
+        specified_goals=None
     ):
         """
         Constructor for simulated server serving WebShop application
@@ -300,6 +313,7 @@ class SimServer:
         limit_goals (`int`) -- Limit to number of goals available
         num_products (`int`) -- Number of products to search across
         human_goals (`bool`) -- If true, load human goals; otherwise, load synthetic goals
+        specified_goals -- If None, generate the goals.
         """
         # Load all products, goals, and search engine
         self.base_url = base_url
@@ -309,28 +323,30 @@ class SimServer:
         self.goals = get_goals(self.all_products, self.product_prices, human_goals)
         self.show_attrs = show_attrs
 
-        # Fix outcome for random shuffling of goals
-        random.seed(233)
-        random.shuffle(self.goals)
-
-        # Apply `filter_goals` parameter if exists to select speific goal(s)
-        if filter_goals is not None:
-            self.goals = [
-                goal for (i, goal) in enumerate(self.goals)
-                if filter_goals(i, goal)
-            ]
-        
-        # Imposes `limit` on goals via random selection
-        if limit_goals != -1 and limit_goals < len(self.goals):
-            self.weights = [goal['weight'] for goal in self.goals]
-            self.cum_weights = [0] + np.cumsum(self.weights).tolist()
-            idxs = []
-            while len(idxs) < limit_goals:
-                idx = random_idx(self.cum_weights)
-                if idx not in idxs:
-                    idxs.append(idx)
-            self.goals = [self.goals[i] for i in idxs]
-        print(f'Loaded {len(self.goals)} goals.')
+        if specified_goals is None:
+            self.goals = get_goals(self.all_products, self.product_prices, human_goals)
+            self.show_attrs = show_attrs
+            random.seed(1234)
+            # Apply `filter_goals` parameter if exists to select speific goal(s)
+            if filter_goals is not None:
+                self.goals = [
+                    goal for (i, goal) in enumerate(self.goals)
+                    if filter_goals(i, goal)
+                ]
+            
+            # Imposes `limit` on goals via random selection
+            if limit_goals != -1 and limit_goals < len(self.goals):
+                self.weights = [goal['weight'] for goal in self.goals]
+                self.cum_weights = [0] + np.cumsum(self.weights).tolist()
+                idxs = []
+                while len(idxs) < limit_goals:
+                    idx = random_idx(self.cum_weights)
+                    if idx not in idxs:
+                        idxs.append(idx)
+                self.goals = [self.goals[i] for i in idxs]
+            print(f'Loaded {len(self.goals)} goals.')
+        else:
+            self.goals = specified_goals
 
         # Set extraneous housekeeping variables
         self.weights = [goal['weight'] for goal in self.goals]

@@ -57,10 +57,15 @@ class WebshopWorker:
         """Get available actions"""
         return self.env.get_available_actions()
     
-    def get_goals(self):
-        """Get environment goals"""
+    def initialize_and_get_goals(self):
+        """Initialize environment and get environment goals"""
+        self.env.initialize()
         return self.env.server.goals
     
+    def initialize_with_goals(self, goals):
+        """Initialize environment with specified goals"""
+        self.env.initialize(goals)
+
     def close(self):
         """Close the environment"""
         self.env.close()
@@ -108,8 +113,14 @@ class WebshopMultiProcessEnv(gym.Env):
             self._workers.append(worker)
 
         # Get goals from the first worker
-        goals_future = self._workers[0].get_goals.remote()
+        goals_future = self._workers[0].initialize_and_get_goals.remote()
         goals = ray.get(goals_future)
+
+        # Initialize the remaining workers 
+        init_futures = []
+        for i in range(1, self.num_processes):
+            init_futures.append(self._workers[i].initialize_with_goals.remote(goals))
+        ray.get(init_futures)
 
         # ------- original ----------#
         # if args.num is None:
