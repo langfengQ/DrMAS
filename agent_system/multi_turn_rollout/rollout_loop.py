@@ -333,7 +333,7 @@ class TrajectoryCollector:
         return gen_batch_output
 
 
-from agent_system.multiagent import ChainExecutor, HierarchicalExecutor, BaseExecutor  # execution strategies
+from agent_system.agent import MultiAgentChainExecutor, MultiAgentHierarchicalExecutor, BaseExecutor 
 # =============================================================================
 # Multi‑Agent collector orchestrating a *team* of agents
 # =============================================================================
@@ -353,14 +353,14 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         super().__init__(config=config, tokenizer=tokenizer, processor=processor)
 
         if executor_type == "chain":
-            self.multiagent_executor: BaseExecutor = ChainExecutor(
+            self.multiagent_executor: BaseExecutor = MultiAgentChainExecutor(
                 agent_names=agent_names,
                 tokenizer=tokenizer,
                 processor=processor,
                 config=config,
             )
         elif executor_type == "hierarchy":
-            self.multiagent_executor: BaseExecutor = HierarchicalExecutor(
+            self.multiagent_executor: BaseExecutor = MultiAgentHierarchicalExecutor(
                 agent_names=agent_names,
                 tokenizer=tokenizer,
                 processor=processor,
@@ -406,18 +406,14 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         # Trajectory collection loop
         for _step in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
-
             ###############################
             text_actions, self.multiagent_batch_buffer = self.multiagent_executor.run(
                 gen_batch=gen_batch,
                 env_obs=obs,
                 actor_rollout_wg=actor_rollout_wg,
             )
-
             next_obs, rewards, dones, infos = envs.step(text_actions)
             ###############################
-            batch.non_tensor_batch['uid'] = uid_batch
-            batch.non_tensor_batch['traj_uid'] = traj_uid
             if len(rewards.shape) == 2:
                 rewards = rewards.squeeze(1)
             if len(dones.shape) == 2:
@@ -425,24 +421,28 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 dones = dones.squeeze(1)
 
             if 'is_action_valid' in infos[0]:
-                batch.non_tensor_batch['is_action_valid'] = np.array([info['is_action_valid'] for info in infos], dtype=bool)
+                is_action_valid = np.array([info['is_action_valid'] for info in infos], dtype=bool)
             else:
-                batch.non_tensor_batch['is_action_valid'] = np.ones(batch_size, dtype=bool)
+                is_action_valid = np.ones(batch_size, dtype=bool)
 
             # Create reward tensor, only assign rewards for active environments
             episode_rewards += torch_to_numpy(rewards) * torch_to_numpy(active_masks)
             episode_lengths[active_masks] += 1
 
             assert len(rewards) == batch_size, f"env should return rewards for all environments, got {len(rewards)} rewards for {batch_size} environments"
-            batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
-            batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
-            
-            # Update episode lengths for active environments
-            batch_list: list[dict] = to_list_of_dict(batch)
 
-            for i in range(batch_size):
-                total_batch_list[i].append(batch_list[i])
-                total_infos[i].append(infos[i])
+            for data in self.multiagent_batch_buffer:
+                agent_name, agent_batch = data['name'], data['batch']
+                agent_batch.non_tensor_batch['agent'] = np.array([agent_name for _ in range(batch_size)], dtype=object)
+                agent_batch.non_tensor_batch['uid'] = uid_batch
+                agent_batch.non_tensor_batch['traj_uid'] = traj_uid
+                agent_batch.non_tensor_batch['is_action_valid'] = is_action_valid
+                agent_batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
+                agent_batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
+                agent_batch_list: list[dict] = to_list_of_dict(agent_batch)
+                for i in range(batch_size):
+                    total_batch_list[i].append(agent_batch_list[i])
+                    total_infos[i].append(infos[i])
 
             # Update done states
             is_done = np.logical_or(is_done, dones)

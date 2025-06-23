@@ -165,6 +165,8 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
         "prompt_length/min": torch.min(prompt_length).detach().item(),
         "prompt_length/clip_ratio": torch.mean(torch.eq(prompt_length, max_prompt_length).float()).detach().item(),
         # episode
+        "episode/batch_size": 
+            len(batch.non_tensor_batch["episode_rewards_mean"]),
         "episode/reward/mean": 
             batch.non_tensor_batch["episode_rewards_mean"][0].item(),
         "episode/reward/max": 

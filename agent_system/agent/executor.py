@@ -3,7 +3,7 @@ from __future__ import annotations
 """
 from typing import List, Dict, Any, Optional, Tuple
 from transformers import PreTrainedTokenizer
-from agent_system.multiagent.agent import AgentRegistry, BaseAgent
+from agent_system.agent.agent import AgentRegistry, BaseAgent
 from verl import DataProto
 
 
@@ -51,14 +51,6 @@ class BaseExecutor:
             "batch": batch,
         })
 
-    def update_obs(self, obs: Dict[str, Any], text_response: str, name: str) -> Dict[str, Any]:
-        """Update the observation dictionary with the text response."""
-        # Naive append of the latest responses to observations
-        bs = len(obs['text'])
-        for i in range(bs):
-            obs['text'][i] = obs['text'][i] + f"\n{name} Response:\n{text_response[i]}\n"
-        return obs
-
     def run(
         self,
         gen_batch: DataProto,
@@ -83,7 +75,7 @@ class BaseExecutor:
 # =============================================================================
 # Chain executor – sequential pass‑through
 # =============================================================================
-class ChainExecutor(BaseExecutor):
+class MultiAgentChainExecutor(BaseExecutor):
     """Sequentially run agents, passing observation and batch through each agent.
     This executor runs agents in a chain, where each agent processes the output
     of the previous agent and passes its output to the next agent.
@@ -97,7 +89,7 @@ class ChainExecutor(BaseExecutor):
     """
     def __init__(
         self,
-        agent_names: Optional[List[str]] = None,
+        agent_names: Optional[List[str]] = ["ReflexionAgent", "PlanningAgent", "ActionAgent"],
         tokenizer: PreTrainedTokenizer = None,
         processor=None,
         config: Any = None,
@@ -119,21 +111,17 @@ class ChainExecutor(BaseExecutor):
     def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wg) -> Tuple[List[str], Dict[str, DataProto]]:
         # clear and reset multiagent batch buffer
         self.reset_buffer()
+        team_context = ["" for _ in range(len(env_obs['text']))]  # Initialize team context for each batch item
 
         # run agents sequentially, passing observation and batch
-        obs = env_obs
         for name in self.agent_order:
-            batch, text_repsonses = self.agents[name].call(gen_batch=gen_batch, obs=obs, actor_rollout_wg=actor_rollout_wg)
-
+            batch, text_repsonses, team_context = self.agents[name].call(gen_batch=gen_batch, env_obs=env_obs, team_context=team_context, actor_rollout_wg=actor_rollout_wg)
             # save the batch to the multiagent buffer
             self.save_to_buffer(name, batch)
-            obs = self.update_obs(obs, text_repsonses, name)
 
             if name == "ActionAgent":
                 text_actions = text_repsonses
                 break  # stop at ActionAgent
-        
-        breakpoint()
         if len(self.multiagent_batch_buffer) != len(self.agent_order):
             raise Warning("Multiagent output batch buffer length does not match number of agents. This may lead to unexpected behavior.")
         return text_actions, self.multiagent_batch_buffer
@@ -142,7 +130,7 @@ class ChainExecutor(BaseExecutor):
 # =============================================================================
 # Hierarchical executor (very simple two‑level demo)
 # =============================================================================
-class HierarchicalExecutor(BaseExecutor):
+class MultiAgentHierarchicalExecutor(BaseExecutor):
     """Example hierarchy:
         * Level‑0 (planner) → produces *sub‑goal* tokens
         * Level‑1 (action)  → acts until sub‑goal considered reached (stub)
