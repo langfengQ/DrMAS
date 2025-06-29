@@ -283,6 +283,12 @@ ray_init:
   num_cpus: null # `None` means using all CPUs, which might cause hang if limited in systems like SLURM. Please set to a number allowed then.
 
 
+agent:
+  multi_agent: True # True for multi-agent training, False for single-agent training
+  agent_names: ["Reflexion Agent", "Action Agent", "Memory Agent"]
+  executor_type: chain
+
+
 env:
   env_name: alfworld/AlfredTWEnv
   seed: 0

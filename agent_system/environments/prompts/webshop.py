@@ -30,28 +30,36 @@ Once you've finished your reasoning, you should choose an admissible action for 
 
 
 WEBSHOP_MULTIAGENT_TEMPLATE_NO_HIS = """
-You are a member of an expert multi-agent team operating in the WebShop e‑commerce environment. The team's overall task is: {task_description}.
-At each step, you and your teammates collaboratively decide on the next action.
+You are a member of an expert multi-agent team operating in the WebShop e‑commerce environment. 
 
-The current observation is: {current_observation}.
+The team's overall task is: {task_description}.
+At each step, you and your teammates collaborate to decide the best next action.
+
+Your team is now at "step 1" and the current observation is: {current_observation}.
 The admissible actions in the current situation are: 
 [
 {available_actions}
 ].
 
-Now, you and your teammates must work together to determine the next action.
+Now, you and your teammates must work together to determine the action.
 """
 
 WEBSHOP_MULTIAGENT_TEMPLATE = """
-You are a member of an expert multi-agent team operating in the WebShop e‑commerce environment. The team's overall task is: {task_description}
-At each step, you and your teammates collaboratively decide on the next action.
+You are a member of an expert multi-agent team operating in the WebShop e‑commerce environment. 
 
-So far, your team has taken {step_count} step(s). Below are the most recent {history_length} observations and the corresponding actions taken by your team: {action_history}
-Your team is now at step {current_step}, and the current observation is: {current_observation}.
+The team's overall task is: {task_description}
+At each step, you and your teammates collaborate to decide the best next action. 
+
+Prior to this step, your team has taken {step_count} environment step(s). Below is the history memory from "step 1" to "step {step_count}":
+[
+{memory}
+]
+
+Your team is now at "step {current_step}" and the current observation is: {current_observation}.
 The admissible actions in the current situation are: 
 [
 {available_actions}
 ].
 
-Now, you and your teammates must work together to determine the next action.
+Now, you and your teammates must work together to determine the action for step {current_step}.
 """

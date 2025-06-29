@@ -149,7 +149,10 @@ class TaskRunner:
         assert config.actor_rollout_ref.rollout.n == 1, "In verl, actor_rollout_ref.rollout.n>1 is for GRPO. In verl+env, we keep n=1, and achieve GRPO by env.rollout.n"
 
         from agent_system.multi_turn_rollout import TrajectoryCollector, MultiAgentTrajectoryCollector
-        traj_collector = MultiAgentTrajectoryCollector(config=config, tokenizer=tokenizer, processor=processor)
+        if config.agent.multi_agent:
+            traj_collector = MultiAgentTrajectoryCollector(config=config, tokenizer=tokenizer, processor=processor)
+        else:
+            traj_collector = TrajectoryCollector(config=config, tokenizer=tokenizer, processor=processor)
 
         from verl.utils.dataset.rl_dataset import collate_fn
 

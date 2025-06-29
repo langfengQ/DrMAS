@@ -17,18 +17,18 @@ def to_numpy(data):
     return data
 
 class EnvironmentManagerBase:
-    def __init__(self, envs, projection_f, env_name=None):
+    def __init__(self, envs, projection_f, config):
         """
         Initialize the environment manager.
         
         Parameters:
         - envs: The environment instance, usually a vectorized environment containing multiple sub-environments.
         - projection_f: A function that maps text actions to environment actions.
-        - env_name (str): The name of the environment.
+        - config: Configuration object.
         """
         self.envs = envs
         self.projection_f = projection_f
-        self.env_name = env_name
+        self.config = config
 
     def reset(self) -> Dict[str, Any]:
         """
@@ -132,7 +132,7 @@ class EnvironmentManagerBase:
         - image (np.ndarray or torch.Tensor): The image to save.
         - path (str): The path to save the image.
         """
-        path = os.path.join(os.path.dirname(__file__), os.path.join("images", self.env_name))
+        path = os.path.join(os.path.dirname(__file__), os.path.join("images", self.config.env.env_name))
         if not os.path.exists(path):
             os.makedirs(path)
         path = os.path.join(path, f"step{step}.png")
