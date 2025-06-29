@@ -32,15 +32,21 @@ Unlike prior approaches that simply concatenate full interaction histories, `ver
 # Quick Feature Summary
 | Feature Category | Supported Capabilities|
 | - | - |
-| **Interaction**        | ✅ Multi-turn Agent-Environment interaction<br>✅ Step-wise interaction<br>✅ Scalable for long-horizon tasks |
-| **Input Flexibility**  | ✅ Fully customizable per-step input structures |
-| **Execution**          | ✅ Parallelized Gym environments<br>✅ Group environments support (for group-based RL)|
-| **Model Support**      | ✅ Qwen3<br>✅ Qwen2.5<br>✅ Qwen2.5-VL<br>✅ LLaMA3.1<br>and more |
-| **Modality**           | ✅ Text-only<br>✅ Text + Image (multi-modal) |
-| **Fine-Tuning**        | ✅ Supports LoRA fine-tuning |
-| **Environments**       | ✅ ALFWorld<br>✅ Sokoban<br>✅ Gym Cards<br>✅ WebShop<br>🧪 AppWorld (experimental) |
-| **RL Algorithms**      | ✅ GiGPO<br>✅ GRPO<br>✅ PPO<br>✅ DAPO<br>✅ RLOO<br>✅ REINFORCE++<br>✅ Dynamic sampling & clip-higher supported <br> and more |
-| **Prompt-based Agent** | ✅ GPT-4o prompt-based agent  |
+| **Interaction**          | ✅ Multi-turn Agent-Environment interaction<br>✅ Step-wise interaction<br>✅ Scalable for long-horizon tasks |
+| **Input Flexibility**    | ✅ Fully customizable per-step input structures |
+| **Execution**            | ✅ Parallelized Gym environments<br>✅ Group environments support (for group-based RL)|
+| **Model Support**        | ✅ Qwen3<br>✅ Qwen2.5<br>✅ Qwen2.5-VL<br>✅ LLaMA3.1<br>and more |
+| **Modality**             | ✅ Text-only<br>✅ Text + Image (multi-modal) |
+| **Lightweight Training** | ✅ Supports LoRA training |
+| **Environments**         | ✅ ALFWorld<br>✅ Sokoban<br>✅ Gym Cards<br>✅ WebShop<br>🧪 AppWorld (experimental) |
+| **RL Algorithms**        | ✅ GiGPO<br>✅ GRPO<br>✅ PPO<br>✅ DAPO<br>✅ RLOO<br>✅ REINFORCE++<br>✅ Dynamic sampling & clip-higher supported <br> and more |
+| **Prompt-based Agent**   | ✅ GPT-4o prompt-based agent  |
+
+# Framework Comparison
+<p align="center">
+    <img src="./docs/gigpo/framework-comparison.png" alt="framework" width="100%">
+</p>
+
 
 # Table of Contents
 
@@ -53,7 +59,7 @@ Unlike prior approaches that simply concatenate full interaction histories, `ver
     - [2. WebShop](#2-webshop)  
     - [3. Sokoban](#3-sokoban)  
     - [4. Gym Cards](#4-gym-cards)  
-    - [5. APPWorld (Experimental)](#5-appworld-experimental)  
+    - [5. AppWorld (Experimental)](#5-appworld-experimental)  
 - [Run Examples](#run-examples)  
   - [RL Training](#rl-training)  
     - [1. GiGPO](#1-gigpo)  
@@ -138,11 +144,6 @@ pip3 install vllm==0.8.5
 ```
 
 ## Install Supported Environments
-<!-- 
-Details for installing each environment are provided in the [Environment Setup Guide](agent_system/environments/README.md).
-
-`verl-agent` supports the following environments: **ALFWorld**, **WebShop**, **Gym Cards**, **Sokoban**, and **APPWorld** (experimental). -->
-
 > ⚠️ **Important:** 
 To run an agent in any of these environments, you must first install and configure the corresponding environment. We strongly recommend installing ***each environment in its own dedicated conda environment*** to avoid potential package version conflicts.
 
@@ -184,12 +185,6 @@ cd ./agent_system/environments/env_package/webshop/webshop
 Note: If you encounter issues with gdown, you may need visit `https://drive.google.com/`, get your Google Drive cookie, and paste it into `.cache/gdown/cookies.txt`.
 Or you may need to manually download the files.
 
-
-Verify that WebShop was installed correctly by running:
-```bash
-python run_web_agent_text_env.py
-```
-
 After WebShop is installed, return to the root directory of the repository and install the verl package in `verl-agent`:
 ```bash
 cd repo_root/
@@ -219,8 +214,8 @@ pip3 install gymnasium==0.29.1
 pip3 install stable-baselines3==2.6.0
 ```
 ---
-### 5. APPWorld (Experimental)
-Install APPWorld package
+### 5. AppWorld (Experimental)
+Install AppWorld package
 ```bash
 cd repo_root/
 pip install git+https://github.com/StonyBrookNLP/appworld.git
@@ -230,7 +225,7 @@ pip install vllm==0.8.5
 ```
 You can ignore the warning of incompatiblity for appworld, because we don't run appworld in `verl-agent` environment.
 
-Create a dedicated conda environment `appworld` for the APPWorld server:
+Create a dedicated conda environment `appworld` for the AppWorld server:
 ```bash
 conda create -n appworld python=3.12 -y
 conda activate appworld
@@ -354,7 +349,7 @@ For a reference implementation, see the webshop environment:
 We welcome and appreciate all contributions! If you have ideas to improve `verl-agent`, please feel free to submit a pull request (PR).
 
 Example contributions include:
-- **APPWorld Bug Fixes**: Fixed compatibility issues and ensured stable integration with the experimental APPWorld environment.
+- **AppWorld Bug Fixes**: Fixed compatibility issues and ensured stable integration with the experimental AppWorld environment.
 - **Asynchronous Rollout**: Improved training efficiency and throughput by supporting asynchronous rollout pipelines.
 - **Additional Environments**: Added support for additional interactive environments to expand the benchmark coverage and task diversity.
 

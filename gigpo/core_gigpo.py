@@ -201,7 +201,7 @@ def build_step_group(anchor_obs: np.array, index: np.array, summarize: bool = Fa
     anchor_obs : np.array
         Array of observation strings
     index : np.array
-        Array of corresponding indices for each observation
+        Array of episode_group_uid
     summarize : bool
         Whether to summarize the group sizes (default: True)
     

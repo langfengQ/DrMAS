@@ -11,7 +11,7 @@ mode="mean_norm" # "mean_norm" or "mean_std_norm"
 python3 -m examples.data_preprocess.prepare \
     --mode 'text' \
     --train_data_size $train_data_size \
-    --val_data_size $val_data_size
+    --val_data_size $((val_data_size * 2)) # evaluate 2 × val_data_size tasks during each iteration
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=gigpo \

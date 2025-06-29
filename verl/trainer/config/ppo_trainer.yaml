@@ -293,6 +293,7 @@ env:
   env_name: alfworld/AlfredTWEnv
   seed: 0
   max_steps: 50
+  history_length: 2
   rollout:
     n: -1 # the group number of envs (for GRPO and GiGPO). -1 means disable env grouping.
 

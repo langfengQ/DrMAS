@@ -6,7 +6,7 @@ import numpy as np
 # Ray remote worker actor -----------------------------------------------------
 # -----------------------------------------------------------------------------
 
-@ray.remote(num_cpus=0.25)
+@ray.remote(num_cpus=0.2)
 class WebshopWorker:
     """Ray remote actor that replaces the worker function.
     Each actor hosts a *WebAgentTextEnv* instance.
@@ -20,7 +20,7 @@ class WebshopWorker:
         sys.path.append(project_root)
         from web_agent_site.envs import WebAgentTextEnv  # noqa: WPS433 (runtime import)
         
-        # env_kwargs['seed'] = seed
+        env_kwargs['seed'] = seed
         self.env = gym.make('WebAgentTextEnv-v0', **env_kwargs)
     
     def step(self, action):
@@ -57,15 +57,10 @@ class WebshopWorker:
         """Get available actions"""
         return self.env.get_available_actions()
     
-    def initialize_and_get_goals(self):
-        """Initialize environment and get environment goals"""
-        self.env.initialize()
+    def get_goals(self):
+        """Get environment goals"""
         return self.env.server.goals
     
-    def initialize_with_goals(self, goals):
-        """Initialize environment with specified goals"""
-        self.env.initialize(goals)
-
     def close(self):
         """Close the environment"""
         self.env.close()
@@ -100,6 +95,7 @@ class WebshopMultiProcessEnv(gym.Env):
         self.env_num = env_num
         self.num_processes = env_num * group_n
         self.is_train = is_train
+        if not is_train: assert group_n == 1
 
         self._rng = np.random.RandomState(seed)
 
@@ -113,14 +109,8 @@ class WebshopMultiProcessEnv(gym.Env):
             self._workers.append(worker)
 
         # Get goals from the first worker
-        goals_future = self._workers[0].initialize_and_get_goals.remote()
+        goals_future = self._workers[0].get_goals.remote()
         goals = ray.get(goals_future)
-
-        # Initialize the remaining workers 
-        init_futures = []
-        for i in range(1, self.num_processes):
-            init_futures.append(self._workers[i].initialize_with_goals.remote(goals))
-        ray.get(init_futures)
 
         # ------- original ----------#
         # if args.num is None:
