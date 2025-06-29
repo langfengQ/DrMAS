@@ -44,7 +44,12 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
         return {'text': full_text_obs, 'image': image_obs, 'anchor': text_obs}, infos
     
     def step(self, text_actions: List[str]):
-        actions, valids = self.projection_f(text_actions, self.envs.get_admissible_commands)
+        if not self.config.agent.multi_agent:
+            actions, valids = self.projection_f(text_actions, self.envs.get_admissible_commands)
+        else:
+            actions = text_actions
+            valids = [1] * len(text_actions)
+
         text_obs, image_obs, rewards, dones, infos = self.envs.step(actions)
         self.memory.store({'text_obs': self.pre_text_obs, 'action': actions})
         self.pre_text_obs = text_obs
@@ -83,10 +88,18 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
             reformatted_admissible_actions = "\n ".join(f"'{s}'" for s in admissible_actions[i] if s != 'help')
 
             if init or self.config.env.history_length <= 0:
-                obs = ALFWORLD_TEMPLATE_NO_HIS.format(
-                    current_observation=text_obs[i],
-                    admissible_actions=reformatted_admissible_actions
-                )
+                if self.config.agent.multi_agent:
+                    obs = ALFWORLD_MULTIAGENT_TEMPLATE_NO_HIS.format(
+                        task_description=self.tasks[i],
+                        current_observation=text_obs[i],
+                        admissible_actions=reformatted_admissible_actions
+                    )
+                else:
+                    obs = ALFWORLD_TEMPLATE_NO_HIS.format(
+                        task_description=self.tasks[i],
+                        current_observation=text_obs[i],
+                        admissible_actions=reformatted_admissible_actions
+                    )
             else:
                 # Get last `history_length` steps
                 recent_history = self.memory[i][-self.config.env.history_length:]
@@ -98,15 +111,27 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
                     action = record["action"]
                     env_obs = record["text_obs"]
                     action_history += f"\n[Observation {step_number}: '{env_obs}', Action {step_number}: '{action}']"
-                obs = ALFWORLD_TEMPLATE.format(
-                    task_description=self.tasks[i],
-                    step_count=len(self.memory[i]),
-                    history_length=valid_history_length,
-                    action_history=action_history.strip(),
-                    current_step=len(self.memory[i]) + 1,
-                    current_observation=text_obs[i],
-                    admissible_actions=reformatted_admissible_actions
-                )
+                
+                # ALFWORLD_TEMPLATE or ALFWORLD_MULTIAGENT_TEMPLATE
+                if self.config.agent.multi_agent:
+                    obs = ALFWORLD_MULTIAGENT_TEMPLATE.format(
+                        task_description=self.tasks[i],
+                        step_count=len(self.memory[i]),
+                        memory="{memory}",
+                        current_step=len(self.memory[i]) + 1,
+                        current_observation=text_obs[i],
+                        admissible_actions=reformatted_admissible_actions
+                    )
+                else:
+                    obs = ALFWORLD_TEMPLATE.format(
+                        task_description=self.tasks[i],
+                        step_count=len(self.memory[i]),
+                        history_length=valid_history_length,
+                        action_history=action_history.strip(),
+                        current_step=len(self.memory[i]) + 1,
+                        current_observation=text_obs[i],
+                        admissible_actions=reformatted_admissible_actions
+                    )
 
             postprocess_text_obs.append(obs)
         return postprocess_text_obs
@@ -176,7 +201,11 @@ class SokobanEnvironmentManager(EnvironmentManagerBase):
         return observations, infos
 
     def step(self, text_actions: List[str]):
-        actions, valids = self.projection_f(text_actions)
+        if not self.config.agent.multi_agent:
+            actions, valids = self.projection_f(text_actions)
+        else:
+            actions = text_actions
+            valids = [1] * len(text_actions)
 
         next_obs, rewards, dones, infos = self.envs.step(actions)
 
@@ -306,7 +335,12 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
         return observations, infos
 
     def step(self, text_actions: List[str]):
-        actions, valids = self.projection_f(text_actions)
+        if not self.config.agent.multi_agent:
+            actions, valids = self.projection_f(text_actions)
+        else:
+            actions = text_actions
+            valids = [1] * len(text_actions)
+
         next_obs, rewards, dones, infos = self.envs.step(actions)
 
         next_obs = self.format_obs(next_obs)
@@ -377,11 +411,18 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
             reformatted_available_actions = "\n".join(f"'{s}'," for s in available_actions)
 
             if init or self.config.env.history_length <= 0:
-                obs = WEBSHOP_TEMPLATE_NO_HIS.format(
-                    task_description=self.tasks[i],
-                    current_observation=text_obs[i],
-                    available_actions=reformatted_available_actions
-                )
+                if self.config.agent.multi_agent:
+                    obs = WEBSHOP_MULTIAGENT_TEMPLATE_NO_HIS.format(
+                        task_description=self.tasks[i],
+                        current_observation=text_obs[i],
+                        available_actions=reformatted_available_actions
+                    )
+                else:
+                    obs = WEBSHOP_TEMPLATE_NO_HIS.format(
+                        task_description=self.tasks[i],
+                        current_observation=text_obs[i],
+                        available_actions=reformatted_available_actions
+                    )
             else:
                 # Get last `history_length` steps
                 recent_history = self.memory[i][-self.config.env.history_length:]
@@ -393,19 +434,26 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                     action = record["action"]
                     env_obs = record["text_obs"]
                     action_history += f"\n[Observation {step_number}: '{env_obs}', Action {step_number}: '{action}']"
-                obs = WEBSHOP_TEMPLATE.format(
-                    task_description=self.tasks[i],
-                    step_count=len(self.memory[i]),
-                    history_length=valid_history_length,
-                    action_history=action_history.strip(),
-                    current_step=len(self.memory[i]) + 1,
-                    current_observation=text_obs[i],
-                    available_actions=reformatted_available_actions
-                )
-                if len(obs) > 13000:
-                    print(f"Warning len(obs)={len(obs)} is too long")
-                    obs = WEBSHOP_TEMPLATE_NO_HIS.format(
+
+                if len(action_history) > 5000:
+                    action_history = "... " + action_history[-5000:]
+
+                if self.config.agent.multi_agent:
+                    obs = WEBSHOP_MULTIAGENT_TEMPLATE.format(
                         task_description=self.tasks[i],
+                        step_count=len(self.memory[i]),
+                        memory="{memory}",
+                        current_step=len(self.memory[i]) + 1,
+                        current_observation=text_obs[i],
+                        available_actions=reformatted_available_actions
+                    )
+                else:
+                    obs = WEBSHOP_TEMPLATE.format(
+                        task_description=self.tasks[i],
+                        step_count=len(self.memory[i]),
+                        history_length=valid_history_length,
+                        action_history=action_history.strip(),
+                        current_step=len(self.memory[i]) + 1,
                         current_observation=text_obs[i],
                         available_actions=reformatted_available_actions
                     )
@@ -442,7 +490,11 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
         return {'text': full_text_obs, 'image': None, 'anchor': text_obs}, infos
     
     def step(self, text_actions: List[str]):
-        actions, valids = self.projection_f(text_actions)
+        if not self.config.agent.multi_agent:
+            actions, valids = self.projection_f(text_actions)
+        else:
+            actions = text_actions
+            valids = [1] * len(text_actions)
 
         text_obs, rewards, dones, infos = self.envs.step(actions)
 
@@ -467,7 +519,7 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
         This function builds the text observation for the agent.
         """
         postprocess_text_obs = []
-        if init and self.supervisors is not None:
+        if init and self.supervisors is not None and self.config.env.history_length <= 0:
             for i in range(len(text_obs)):
                 obs = APPWORLD_TEMPLATE_NO_HIS.format(
                         supervisor_first_name=self.supervisors[i]['first_name'],
