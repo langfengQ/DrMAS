@@ -12,7 +12,7 @@ class BaseExecutor:
 
     def __init__(
         self,
-        agent_names: List[str],
+        agent_list: List[str],
         tokenizer: PreTrainedTokenizer,
         processor,
         config: Any,
@@ -20,8 +20,8 @@ class BaseExecutor:
         self.config = config
         self.tokenizer = tokenizer
         self.processor = processor
-        if agent_names is None:
-            agent_names = ["Reflexion Agent", "Action Agent", "Memory Agent"]
+        if agent_list is None:
+            agent_list = ["Reflexion Agent", "Action Agent", "Memory Agent"]
         
         self.agents: Dict[str, BaseAgent] = {
             name: AgentRegistry.create(name=name, 
@@ -29,9 +29,9 @@ class BaseExecutor:
                                        processor=processor,
                                        config=config,
                                        )
-            for name in agent_names
+            for name in agent_list
         }
-        self.agent_names = agent_names
+        self.agent_list = agent_list
         self.multiagent_batch_buffer: List[Dict] = []  # Buffer to store multiagent output batches
         self.memory = None
 
@@ -64,7 +64,7 @@ class BaseExecutor:
 
     def update_memory(self, text_repsonses: List[str]):
         """Update the memory of the agents with the latest text responses."""
-        assert "Memory Agent" in self.agent_names, "Memory Agent is required to update memory. Please add it to the agent_names list."
+        assert "Memory Agent" in self.agent_list, "Memory Agent is required to update memory. Please add it to the agent_list list."
         self.memory = text_repsonses
 
     def run(
@@ -100,20 +100,20 @@ class MultiAgentChainExecutor(BaseExecutor):
     It is useful for scenarios where agents need to work in a sequence, such as
     in a pipeline or a multi‑step process.
     Args:
-        agent_names (List[str]): List of agent names to be executed in sequence.
+        agent_list (List[str]): List of agent names to be executed in sequence.
         tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
         processor: Processor for handling data.
         config (Any): Configuration object containing settings for the executor.
     """
     def __init__(
         self,
-        agent_names: Optional[List[str]] = ["Reflexion Agent", "Planning Agent", "Action Agent"],
+        agent_list: Optional[List[str]] = ["Reflexion Agent", "Planning Agent", "Action Agent"],
         tokenizer: PreTrainedTokenizer = None,
         processor=None,
         config: Any = None,
     ):
         super().__init__(
-            agent_names=agent_names,
+            agent_list=agent_list,
             tokenizer=tokenizer,
             processor=processor,
             config=config,
@@ -122,7 +122,7 @@ class MultiAgentChainExecutor(BaseExecutor):
             raise ValueError("ChainExecutor requires at least one agent.")
         
         # The order of agents is the execution order.
-        self.agent_order = self.agent_names
+        self.agent_order = self.agent_list
         # if self.agent_order[-1] != "ActionAgent":
         #     raise ValueError("The last agent must be ActionAgent.")
 
@@ -165,7 +165,7 @@ class MultiAgentHierarchicalExecutor(BaseExecutor):
             raise ValueError("Hierarchy requires ≥2 agents (planner + actor).")
         self.planner = self.agents[0]
         self.actor_chain = ChainExecutor(  # reuse chain for lower level
-            agent_names=[ag.name for ag in self.agents[1:]],
+            agent_list=[ag.name for ag in self.agents[1:]],
             tokenizer=self.tokenizer,
             config=self.config,
         )

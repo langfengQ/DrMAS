@@ -350,21 +350,21 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
     ):
         super().__init__(config=config, tokenizer=tokenizer, processor=processor)
 
-        agent_names = config.agent.agent_names
+        agent_list = config.agent.agent_list
         executor_type = config.agent.executor_type
-        print("agent_names: ", agent_names)
+        print("agent_list: ", agent_list)
         print("executor_type: ", executor_type)
 
         if executor_type == "chain":
             self.multiagent_executor: BaseExecutor = MultiAgentChainExecutor(
-                agent_names=agent_names,
+                agent_list=agent_list,
                 tokenizer=tokenizer,
                 processor=processor,
                 config=config,
             )
         elif executor_type == "hierarchy":
             self.multiagent_executor: BaseExecutor = MultiAgentHierarchicalExecutor(
-                agent_names=agent_names,
+                agent_list=agent_list,
                 tokenizer=tokenizer,
                 processor=processor,
                 config=config,

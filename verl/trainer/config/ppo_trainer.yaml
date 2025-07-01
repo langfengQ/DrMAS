@@ -284,8 +284,8 @@ ray_init:
 
 
 agent:
-  multi_agent: True # True for multi-agent training, False for single-agent training
-  agent_names: ["Reflexion Agent", "Action Agent", "Memory Agent"]
+  multi_agent: False # True for multi-agent training, False for single-agent training
+  agent_list: ["Reflexion Agent", "Action Agent", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "Action Agent", "Memory Agent"]
   executor_type: chain
 
 

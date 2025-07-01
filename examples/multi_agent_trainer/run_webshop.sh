@@ -1,11 +1,19 @@
 set -x
 ENGINE=${1:-vllm}
-export VLLM_ATTENTION_BACKEND=XFORMERS
+export CUDA_VISIBLE_DEVICES=4,5,6,7
 
 train_data_size=16
 val_data_size=128
 group_size=8
-mode="mean_norm" # "mean_norm" or "mean_std_norm"
+
+multi_agent=True
+agent_list='["Reflexion Agent","Action Agent","Memory Agent"]'
+
+algorithm=gigpo
+mode=mean_std_norm # "mean_norm" or "mean_std_norm"
+model=Qwen/Qwen2.5-7B-Instruct
+
+experiment_name="${algorithm}_$(basename $model)_${group_size}group_${mode}_RAM"
 
 # We only use data preparation to indicate the modality and the data size.
 python3 -m examples.data_preprocess.prepare \
@@ -14,7 +22,7 @@ python3 -m examples.data_preprocess.prepare \
     --val_data_size $((val_data_size * 2)) # evaluate 2 × val_data_size tasks during each iteration
 
 python3 -m verl.trainer.main_ppo \
-    algorithm.adv_estimator=gigpo \
+    algorithm.adv_estimator=$algorithm \
     data.train_files=$HOME/data/verl-agent/text/train.parquet \
     data.val_files=$HOME/data/verl-agent/text/test.parquet \
     data.train_batch_size=$train_data_size \
@@ -24,10 +32,10 @@ python3 -m verl.trainer.main_ppo \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
     data.return_raw_chat=True \
-    actor_rollout_ref.model.path=Qwen/Qwen2.5-1.5B-Instruct \
+    actor_rollout_ref.model.path=$model \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=64 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=192 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.01 \
@@ -49,18 +57,20 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.1 \
     algorithm.use_kl_in_reward=False \
-    algorithm.gamma=0.95 \
+    algorithm.gamma=0.985 \
     algorithm.gigpo.step_advantage_w=1.0 \
     algorithm.gigpo.mode=$mode \
     env.env_name=Webshop \
     env.seed=0 \
     env.max_steps=15 \
     env.rollout.n=$group_size \
+    agent.agent_list="$agent_list" \
+    agent.multi_agent=$multi_agent \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
-    trainer.project_name='verl_agent_webshop' \
-    trainer.experiment_name='gigpo_qwen2.5_1.5b' \
-    trainer.n_gpus_per_node=2 \
+    trainer.project_name='verl_multiagent_webshop' \
+    trainer.experiment_name="$experiment_name" \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \
     trainer.test_freq=5 \
