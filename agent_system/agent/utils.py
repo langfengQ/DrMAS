@@ -1,4 +1,5 @@
 from typing import List
+import numpy as np
 
 def tag_projection(text_repsonses: List[str], start_tag: str, end_tag: str) -> List[str]:
     """
@@ -15,7 +16,7 @@ def tag_projection(text_repsonses: List[str], start_tag: str, end_tag: str) -> L
         try:
             if start_idx == -1 or end_idx == -1:
                 # If we can't find a valid <code>...</code> block, mark as invalid
-                extracted_action = text_repsonses[i][-100:]
+                extracted_action = text_repsonses[i][-500:]
                 valids[i] = 0
                 text_repsonses[i] = extracted_action
                 continue
@@ -27,8 +28,9 @@ def tag_projection(text_repsonses: List[str], start_tag: str, end_tag: str) -> L
             valids[i] = 1
 
         except:
-            extracted_action = text_repsonses[i][-100:]
+            extracted_action = text_repsonses[i][-500:]
             valids[i] = 0
             text_repsonses[i] = extracted_action
 
+    valids = np.array(valids, dtype=bool)
     return text_repsonses, valids

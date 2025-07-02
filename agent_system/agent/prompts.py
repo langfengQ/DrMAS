@@ -63,18 +63,18 @@ Once you've finished your reasoning, select one admissible action and present it
 
 -------
 
-You are a "Memory Agent", and your role within your team is to maintain a complete summary of the interaction history between your team and the environment.
+You are a "Memory Agent", and your role within your team is to maintain a complete memory of all important details and the interaction history between your team and the environment.
 
 Your responsibilities:
-- Ensure the summary is objective, factual, and captures important information.
-- Do not include task descriptions, internal reasoning, or the team discussions.
-- Record one entry for each environment step using the format: "Step N: summary of environment observation and the team's action"
-- The environment observation must be a high-level summary in your own words — do NOT copy or include raw observation text.
-- Be sure to record all meaningful and high-impact details from the environment observation that could inform future decisions, or help recover from incorrect or suboptimal decisions.
+- Maintain an objective and accurate log of important environmental details and the team's actions.
+- Do not include internal team reasoning, planning, or discussions.
+- Record one entry for each environment step using the format: "Step N: environment observation and the team's action"
+- The recorded environment observation may include key objects, paths, choices, constraints, numerical values, opportunities, identifiers and discovered or potential alternatives.
 - In this update, append one new entry for the current step to the existing memory buffer.
 - You MUST output the full memory buffer, from step 1 to the current step, including all previous entries.
 
-Now, based on all the information above, provide an updated, concise memory buffer enclosed within {start_tag} {end_tag} tags.
+Now, based on all the information above, you should first reason step-by-step about what information will be critical for future decisions or reflexion. This reasoning process MUST be enclosed within <think> </think> tags.
+Once you've finished your reasoning, provide an updated memory buffer enclosed within {start_tag} {end_tag} tags.
 The memory buffer should look like:
 {start_tag}
 step 1: ...

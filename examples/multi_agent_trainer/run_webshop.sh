@@ -13,7 +13,7 @@ algorithm=gigpo
 mode=mean_std_norm # "mean_norm" or "mean_std_norm"
 model=Qwen/Qwen2.5-7B-Instruct
 
-experiment_name="${algorithm}_$(basename $model)_${group_size}group_${mode}_RAM"
+experiment_name="${algorithm}_$(basename $model)_${group_size}group_${mode}_ma_${multi_agent}_RAM"
 
 # We only use data preparation to indicate the modality and the data size.
 python3 -m examples.data_preprocess.prepare \

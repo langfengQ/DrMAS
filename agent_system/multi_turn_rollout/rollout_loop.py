@@ -424,11 +424,6 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 # dones is numpy, delete a dimension
                 dones = dones.squeeze(1)
 
-            if 'is_action_valid' in infos[0]:
-                is_action_valid = np.array([info['is_action_valid'] for info in infos], dtype=bool)
-            else:
-                is_action_valid = np.ones(batch_size, dtype=bool)
-
             # Create reward tensor, only assign rewards for active environments
             episode_rewards += torch_to_numpy(rewards) * torch_to_numpy(active_masks)
             episode_lengths[active_masks] += 1
@@ -440,7 +435,6 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 agent_batch.non_tensor_batch['agent'] = np.array([agent_name for _ in range(batch_size)], dtype=object)
                 agent_batch.non_tensor_batch['uid'] = uid_batch
                 agent_batch.non_tensor_batch['traj_uid'] = traj_uid
-                agent_batch.non_tensor_batch['is_action_valid'] = is_action_valid
                 agent_batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
                 agent_batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
                 agent_batch_list: list[dict] = to_list_of_dict(agent_batch)

@@ -108,6 +108,9 @@ class BaseAgent:
         
         text_repsonses = self.tokenizer.batch_decode(batch.batch['responses'], skip_special_tokens=True)
 
+        text_repsonses, valids  = tag_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
+        batch.non_tensor_batch['is_action_valid'] = valids
+
         return batch, text_repsonses
 
     def call(
@@ -160,7 +163,6 @@ class ReflexionAgent(BaseAgent):
                                     processor=self.processor,
                                     )
         batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, gen_batch.meta_info)
-        text_repsonses, _  = tag_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
 
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context
@@ -182,7 +184,6 @@ class PlanningAgent(BaseAgent):
                                     processor=self.processor,
                                     )
         batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, gen_batch.meta_info)
-        text_repsonses, _  = tag_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
 
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context
@@ -208,7 +209,6 @@ class ActionAgent(BaseAgent):
                                     processor=self.processor,
                                     )
         batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, gen_batch.meta_info)
-        text_repsonses, _  = tag_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
 
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context
@@ -231,7 +231,6 @@ class MemoryAgent(BaseAgent):
                                     processor=self.processor,
                                     )
         batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, gen_batch.meta_info)
-        text_repsonses, _  = tag_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
 
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context
