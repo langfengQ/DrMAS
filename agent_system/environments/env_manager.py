@@ -83,6 +83,12 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
         This function builds the text observation for the agent.
         """
         postprocess_text_obs = []
+        if not init and self.config.env.history_length > 0:
+            memory_contexts, valid_lens = self.memory.fetch(
+                    self.config.env.history_length,
+                    obs_key="text_obs",
+                    action_key="action")
+            
         for i in range(len(text_obs)):
             # exclude 'help' in admissible_actions[i]
             reformatted_admissible_actions = "\n ".join(f"'{s}'" for s in admissible_actions[i] if s != 'help')
@@ -101,18 +107,6 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
                         admissible_actions=reformatted_admissible_actions
                     )
             else:
-                # Get last `history_length` steps
-                recent_history = self.memory[i][-self.config.env.history_length:]
-                valid_history_length = len(recent_history)
-                start_index = len(self.memory[i]) - valid_history_length
-                action_history = ""
-                for j, record in enumerate(recent_history):
-                    step_number = start_index + j + 1
-                    action = record["action"]
-                    env_obs = record["text_obs"]
-                    action_history += f"\n[Observation {step_number}: '{env_obs}', Action {step_number}: '{action}']"
-                
-                # ALFWORLD_TEMPLATE or ALFWORLD_MULTIAGENT_TEMPLATE
                 if self.config.agent.multi_agent:
                     obs = ALFWORLD_MULTIAGENT_TEMPLATE.format(
                         task_description=self.tasks[i],
@@ -126,8 +120,8 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
                     obs = ALFWORLD_TEMPLATE.format(
                         task_description=self.tasks[i],
                         step_count=len(self.memory[i]),
-                        history_length=valid_history_length,
-                        action_history=action_history.strip(),
+                        history_length=valid_lens[i],
+                        action_history=memory_contexts[i],
                         current_step=len(self.memory[i]) + 1,
                         current_observation=text_obs[i],
                         admissible_actions=reformatted_admissible_actions
@@ -239,6 +233,13 @@ class SokobanEnvironmentManager(EnvironmentManagerBase):
         This function builds the text observation for the agent.
         """
         postprocess_text_obs = []
+
+        if not init and self.config.env.history_length > 0:
+            memory_contexts, valid_lens = self.memory.fetch(
+                    self.config.env.history_length,
+                    obs_key="text_obs",
+                    action_key="action")
+            
         for i in range(len(infos)):
             if init or self.config.env.history_length <= 0:
                 obs = SOKOBAN_VISUAL_TEMPLATE if self.is_multi_modal \
@@ -246,25 +247,13 @@ class SokobanEnvironmentManager(EnvironmentManagerBase):
                     current_observation=text_obs[i],
                 )
             else:
-                # Get last `history_length` steps
-                recent_history = self.memory[i][-self.config.env.history_length:]
-                valid_history_length = len(recent_history)
-                start_index = len(self.memory[i]) - valid_history_length
-                action_history = ""
-                for j, record in enumerate(recent_history):
-                    step_number = start_index + j + 1
-                    if self.is_multi_modal:
-                        action_history += f"\n[Action {step_number}: '{record['action']}']"
-                    else:
-                        action_history += f"\n[Text Observation {step_number}: \n{record['text_obs']}\nAction {step_number}: '{record['action']}']"
-
                 if self.is_multi_modal:
                     obs = SOKOBAN_VISUAL_TEMPLATE
                 else:
                     obs = SOKOBAN_TEMPLATE.format(
                         step_count=len(self.memory[i]),
-                        history_length=valid_history_length,
-                        action_history=action_history.strip(),
+                        history_length=valid_lens[i],
+                        action_history=memory_contexts[i],
                         current_step=len(self.memory[i]) + 1,
                         current_observation=text_obs[i],
                     )
@@ -405,6 +394,12 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
         This function builds the text observation for the agent.
         """
         postprocess_text_obs = []
+        if not init and self.config.env.history_length > 0:
+            memory_contexts, valid_lens = self.memory.fetch(
+                    self.config.env.history_length,
+                    obs_key="text_obs",
+                    action_key="action")
+            
         for i in range(len(text_obs)):
             
             available_actions = self.format_avail_actions(infos[i]['available_actions'])
@@ -424,19 +419,8 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                         available_actions=reformatted_available_actions
                     )
             else:
-                # Get last `history_length` steps
-                recent_history = self.memory[i][-self.config.env.history_length:]
-                valid_history_length = len(recent_history)
-                start_index = len(self.memory[i]) - valid_history_length
-                action_history = ""
-                for j, record in enumerate(recent_history):
-                    step_number = start_index + j + 1
-                    action = record["action"]
-                    env_obs = record["text_obs"]
-                    action_history += f"\n[Observation {step_number}: '{env_obs}', Action {step_number}: '{action}']"
-
-                if len(action_history) > 5000:
-                    action_history = "... " + action_history[-5000:]
+                if len(memory_contexts[i]) > 5000:
+                    memory_contexts[i] = "... " + memory_contexts[i][-5000:]
 
                 if self.config.agent.multi_agent:
                     obs = WEBSHOP_MULTIAGENT_TEMPLATE.format(
@@ -451,8 +435,8 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                     obs = WEBSHOP_TEMPLATE.format(
                         task_description=self.tasks[i],
                         step_count=len(self.memory[i]),
-                        history_length=valid_history_length,
-                        action_history=action_history.strip(),
+                        history_length=valid_lens[i],
+                        action_history=memory_contexts[i],
                         current_step=len(self.memory[i]) + 1,
                         current_observation=text_obs[i],
                         available_actions=reformatted_available_actions
