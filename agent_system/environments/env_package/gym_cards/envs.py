@@ -3,7 +3,7 @@ import ray
 import numpy as np
 from gym_cards.envs import Point24Env, EZPointEnv, BlackjackEnv, NumberLineEnv
 
-@ray.remote(num_cpus=0.25)
+@ray.remote(num_cpus=0.2)
 class GymCardsWorker:
     """
     Ray remote actor that replaces the worker function.

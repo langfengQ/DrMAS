@@ -37,7 +37,7 @@ def compute_reward(info, multi_modal=False):
         reward = 10.0 * float(info['won'])
     return reward
 
-@ray.remote(num_cpus=0.25)
+@ray.remote(num_cpus=0.2)
 class AlfworldWorker:
     """
     Ray remote actor that replaces the worker function.

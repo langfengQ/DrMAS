@@ -347,21 +347,24 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         config: Any,
         tokenizer: PreTrainedTokenizer,
         processor: Any = None,
-        executor_type: str = "chain",  # "chain" | "hierarchy" or custom
-        agent_names: Optional[List[str]] = None,  # default comes from BaseExecutor
     ):
         super().__init__(config=config, tokenizer=tokenizer, processor=processor)
 
+        agent_list = config.agent.agent_list
+        executor_type = config.agent.executor_type
+        print("agent_list: ", agent_list)
+        print("executor_type: ", executor_type)
+
         if executor_type == "chain":
             self.multiagent_executor: BaseExecutor = MultiAgentChainExecutor(
-                agent_names=agent_names,
+                agent_list=agent_list,
                 tokenizer=tokenizer,
                 processor=processor,
                 config=config,
             )
         elif executor_type == "hierarchy":
             self.multiagent_executor: BaseExecutor = MultiAgentHierarchicalExecutor(
-                agent_names=agent_names,
+                agent_list=agent_list,
                 tokenizer=tokenizer,
                 processor=processor,
                 config=config,
@@ -411,6 +414,7 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 gen_batch=gen_batch,
                 env_obs=obs,
                 actor_rollout_wg=actor_rollout_wg,
+                step=_step
             )
             next_obs, rewards, dones, infos = envs.step(text_actions)
             ###############################
@@ -419,11 +423,6 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
             if len(dones.shape) == 2:
                 # dones is numpy, delete a dimension
                 dones = dones.squeeze(1)
-
-            if 'is_action_valid' in infos[0]:
-                is_action_valid = np.array([info['is_action_valid'] for info in infos], dtype=bool)
-            else:
-                is_action_valid = np.ones(batch_size, dtype=bool)
 
             # Create reward tensor, only assign rewards for active environments
             episode_rewards += torch_to_numpy(rewards) * torch_to_numpy(active_masks)
@@ -436,7 +435,6 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 agent_batch.non_tensor_batch['agent'] = np.array([agent_name for _ in range(batch_size)], dtype=object)
                 agent_batch.non_tensor_batch['uid'] = uid_batch
                 agent_batch.non_tensor_batch['traj_uid'] = traj_uid
-                agent_batch.non_tensor_batch['is_action_valid'] = is_action_valid
                 agent_batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
                 agent_batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
                 agent_batch_list: list[dict] = to_list_of_dict(agent_batch)

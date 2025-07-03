@@ -18,11 +18,12 @@
 
 `verl-agent` is an extension of [veRL](https://github.com/volcengine/verl), specifically designed for training **large language model (LLM) agents via reinforcement learning (RL)**. 
 
-Unlike prior approaches that simply concatenate full interaction histories, `verl-agent` handles each step independently and allows for **fully customizable** input structures for every step. This design makes `verl-agent` **highly scalable for very long-horizon, multi-turn RL training** (e.g., tasks in ALFWorld can require up to 50 steps to complete).
+Unlike prior approaches that simply concatenate full interaction histories, `verl-agent` allows for **fully customizable** memory module, history management, and per-step input structures. This design makes `verl-agent` **highly scalable for very long-horizon, multi-turn RL training** (e.g., tasks in ALFWorld can require up to 50 steps to complete).
 
 `verl-agent` provides a **diverse set of RL algorithms** (including our new algorithm GiGPO) and a **rich suite of agent environments**, enabling the development of reasoning agents in both visual and text-based tasks.
 
 # News
+- [2025.07.02] Add modular memory manager. See [here](./agent_system/memory).
 - [2025.06.12] 7B models released. 
 - [2025.06.03] ***Major update***: Merge all features from the latest [veRL](https://github.com/volcengine/verl). For example, `verl-agent` now supports Qwen3, LoRA, REINFORCE++, and more. Feel free to explore!
 - [2025.05.22] Add support for RLOO.
@@ -32,15 +33,22 @@ Unlike prior approaches that simply concatenate full interaction histories, `ver
 # Quick Feature Summary
 | Feature Category | Supported Capabilities|
 | - | - |
-| **Interaction**        | ✅ Multi-turn Agent-Environment interaction<br>✅ Step-wise interaction<br>✅ Scalable for long-horizon tasks |
-| **Input Flexibility**  | ✅ Fully customizable per-step input structures |
-| **Execution**          | ✅ Parallelized Gym environments<br>✅ Group environments support (for group-based RL)|
-| **Model Support**      | ✅ Qwen3<br>✅ Qwen2.5<br>✅ Qwen2.5-VL<br>✅ LLaMA3.1<br>and more |
-| **Modality**           | ✅ Text-only<br>✅ Text + Image (multi-modal) |
-| **Fine-Tuning**        | ✅ Supports LoRA fine-tuning |
-| **Environments**       | ✅ ALFWorld<br>✅ Sokoban<br>✅ Gym Cards<br>✅ WebShop<br>🧪 AppWorld (experimental) |
-| **RL Algorithms**      | ✅ GiGPO<br>✅ GRPO<br>✅ PPO<br>✅ DAPO<br>✅ RLOO<br>✅ REINFORCE++<br>✅ Dynamic sampling & clip-higher supported <br> and more |
-| **Prompt-based Agent** | ✅ GPT-4o prompt-based agent  |
+| **Interaction**          | ✅ Multi-turn Agent-Environment interaction<br>✅ Step-wise interaction<br>✅ Scalable for long-horizon tasks |
+| **Memory**               | ✅ Fully customizable memory module<br>✅ Flexible history management|
+| **Input Flexibility**    | ✅ Fully customizable per-step input structures |
+| **Execution**            | ✅ Parallelized Gym environments<br>✅ Group environments support (for group-based RL)|
+| **Model Support**        | ✅ Qwen3<br>✅ Qwen2.5<br>✅ Qwen2.5-VL<br>✅ LLaMA3.1<br>and more |
+| **Modality**             | ✅ Text-only<br>✅ Text + Image (multi-modal) |
+| **Lightweight Training** | ✅ Supports LoRA training |
+| **Environments**         | ✅ ALFWorld<br>✅ Sokoban<br>✅ Gym Cards<br>✅ WebShop<br>🧪 AppWorld (experimental) |
+| **RL Algorithms**        | ✅ GiGPO<br>✅ GRPO<br>✅ PPO<br>✅ DAPO<br>✅ RLOO<br>✅ REINFORCE++<br>✅ Dynamic sampling & clip-higher supported <br> and more |
+| **Prompt-based Agent**   | ✅ GPT-4o prompt-based agent  |
+
+# Framework Comparison
+<p align="center">
+    <img src="./docs/gigpo/framework-comparison.png" alt="framework" width="100%">
+</p>
+
 
 # Table of Contents
 
@@ -53,7 +61,7 @@ Unlike prior approaches that simply concatenate full interaction histories, `ver
     - [2. WebShop](#2-webshop)  
     - [3. Sokoban](#3-sokoban)  
     - [4. Gym Cards](#4-gym-cards)  
-    - [5. APPWorld (Experimental)](#5-appworld-experimental)  
+    - [5. AppWorld (Experimental)](#5-appworld-experimental)  
 - [Run Examples](#run-examples)  
   - [RL Training](#rl-training)  
     - [1. GiGPO](#1-gigpo)  
@@ -66,9 +74,10 @@ Unlike prior approaches that simply concatenate full interaction histories, `ver
   - [LoRA](#lora)
   - [Prompt-based Agent with GPT-4o](#prompt-based-agent-with-gpt-4o)
 - [Tips](#tips)
-  - [1. Data Preparation](#1-data-preparation)
-  - [2. Customize Your Own Prompts](#2-customize-your-own-prompts)
-  - [3. Add New Environments](#3-add-new-environments)
+  - [1. Customize Memory Module](#1-customize-memory-module)
+  - [2. Data Preparation](#2-data-preparation)
+  - [3. Customize Your Own Prompts](#3-customize-your-own-prompts)
+  - [4. Add New Environments](#4-add-new-environments)
 - [Contributing](#contributing)
 - [Acknowledgement](#acknowledgement)
 - [Citation](#citation)
@@ -80,15 +89,19 @@ Unlike prior approaches that simply concatenate full interaction histories, `ver
 
   `verl-agent` supports multi-step interactive loops between agents and environments. Agents perceive environmental feedback after each step, forming the basis for reinforcement learning.
 
-- **Fully Customizable Per-Step Input Structure & Scalable for Very Long-Horizon Optimization**
+- **Fully Customizable Memory Module & Per-Step Input Structure**
 
-  Prior works like [RAGEN](https://github.com/RAGEN-AI/RAGEN) and [Search-R1](https://github.com/PeterGriffinJin/Search-R1) concatenate the entire history of states and responses. This causes the input length to grow rapidly with the number of turns, making them difficult to scale to long-horizon scenarios. In contrast, `verl-agent` handles each step independently. At each step, the input only includes the current observation plus extra context (see prompt [here](https://github.com/langfengQ/verl-agent/blob/master/agent_system/environments/prompts/webshop.py)). For example, developers can ***flexibly choose what history to include, such as, recent steps, key events, summaries, or external knowledge***. There's no requirement to concatenate the full history, and the input structure for each step is ***fully customizable***. For example, the optional context can be simply set as a sliding window of recent history (e.g., the last 2 steps). This means the input length stays almost constant, regardless of how many steps have occurred so far, making `verl-agent` is highly scalable for long-horizon scenarios.
+  `verl-agent` features a **customizable memory module** (see [here](./agent_system/memory)) that allows for flexibly choosing what history to include for each step. The input typically consists of the current observation along with a concise history summary at each step (see prompt [here](./agent_system/environments/prompts/webshop.py)). Developers can **freely define what to include, such as recent steps, key events, summaries, or external knowledge**. There's no requirement to concatenate the full history, and the input structure for each step is ***fully customizable***.
+
+- **Scalable for Very Long-Horizon Optimization**
+
+  Prior works like [RAGEN](https://github.com/RAGEN-AI/RAGEN) and [Search-R1](https://github.com/PeterGriffinJin/Search-R1) concatenate the entire history of states and responses. This causes the context length to grow rapidly with the number of turns, making them difficult to scale to long-horizon scenarios. In contrast, `verl-agent` constructs inputs step-by-step. Each input is concise and customizable. This design keeps the context length almost constant over time, making `verl-agent` highly scalable for long-horizon scenarios (e.g., 30–50 steps in ALFWorld) without running into token limits or inefficiency.
   
 - **Parallelized Gym-Style Environments and Group Environments**
 
   `verl-agent` provides a gym-style interface with support for parallelized environments. This enables high-throughput rollouts, speeding up training. In addition, `verl-agent` introduces the concept of group environments. All environments within a group share identical initial states during `reset()`. This is especially useful for algorithms like GRPO and DAPO that require multiple rollouts on the same state. You can configure the number of rollouts per group using the `env.rollout.n` in [ppo_trainer.yaml](./verl/trainer/config/ppo_trainer.yaml) config file.
 
-- **Support for Variuos Models**
+- **Support for Various Models**
 
   `verl-agent` supports a wide range of LLMs, including `Qwen3`, `Qwen2.5`, `LLaMA3.1`, `Qwen2.5-VL`, and others, allowing flexibility for various deployment needs.
 
@@ -138,11 +151,6 @@ pip3 install vllm==0.8.5
 ```
 
 ## Install Supported Environments
-<!-- 
-Details for installing each environment are provided in the [Environment Setup Guide](agent_system/environments/README.md).
-
-`verl-agent` supports the following environments: **ALFWorld**, **WebShop**, **Gym Cards**, **Sokoban**, and **APPWorld** (experimental). -->
-
 > ⚠️ **Important:** 
 To run an agent in any of these environments, you must first install and configure the corresponding environment. We strongly recommend installing ***each environment in its own dedicated conda environment*** to avoid potential package version conflicts.
 
@@ -181,14 +189,8 @@ cd ./agent_system/environments/env_package/webshop/webshop
 ./setup.sh -d all
 ```
 
-Note: If you encounter issues with gdown, you may need visit `https://drive.google.com/`, get your Google Drive cookie, and paste it into `.cache/gdown/cookies.txt`.
+Note: If you encounter issues with gdown, you may need to visit `https://drive.google.com/`, get your Google Drive cookie, and paste it into `.cache/gdown/cookies.txt`.
 Or you may need to manually download the files.
-
-
-Verify that WebShop was installed correctly by running:
-```bash
-python run_web_agent_text_env.py
-```
 
 After WebShop is installed, return to the root directory of the repository and install the verl package in `verl-agent`:
 ```bash
@@ -219,8 +221,8 @@ pip3 install gymnasium==0.29.1
 pip3 install stable-baselines3==2.6.0
 ```
 ---
-### 5. APPWorld (Experimental)
-Install APPWorld package
+### 5. AppWorld (Experimental)
+Install AppWorld package
 ```bash
 cd repo_root/
 pip install git+https://github.com/StonyBrookNLP/appworld.git
@@ -228,9 +230,9 @@ appworld install
 pip install -e .
 pip install vllm==0.8.5
 ```
-You can ignore the warning of incompatiblity for appworld, because we don't run appworld in `verl-agent` environment.
+You can ignore the warning of incompatibility for appworld, because we don't run appworld in `verl-agent` environment.
 
-Create a dedicated conda environment `appworld` for the APPWorld server:
+Create a dedicated conda environment `appworld` for the AppWorld server:
 ```bash
 conda create -n appworld python=3.12 -y
 conda activate appworld
@@ -322,10 +324,15 @@ bash examples/prompt_agent/run_gpt4o_agent.sh
 
 # Tips
 
-## 1. Data Preparation
+## 1. Customize Memory Module
+`verl-agent` supports a customizable and flexible memory system for managing and formatting interaction history between the agent and the environment. We provide a [SimpleMemory](./agent_system/memory/memory.py) implementation as a default starting point. This memory module is invoked within [env_manager.py](./agent_system/environments/env_manager.py) (i.e., `build_text_obs()`) to construct the observation at each step. 
+
+Developers are encouraged to extend this module with custom memory strategies, such as dynamic summarization, selective memory retention, or external knowledge integration, to improve the handling of long-horizon interaction histories.
+
+## 2. Data Preparation
 We only use data preparation to indicate the modality, either "text" or "visual". For example, if the task is purely text-based, the data will just be an empty string "". If it involves visual input, it will be "<image>". As for agent input (including task instruction, observation and prompt), we follow the classical RL pipeline. That means the input of LLM agent comes from the environment's feedback through `env.reset()` and `env.step()`.
 
-## 2. Customize Your Own Prompts  
+## 3. Customize Your Own Prompts  
 We adopt a simple and minimal prompt format in our implementation. For example, in the WebShop environment:
 ```
 You are an expert autonomous agent operating in the WebShop e‑commerce environment.
@@ -337,7 +344,7 @@ You should first reason step-by-step about the current situation, then think car
 If you wish to further enhance or customize them, you can find and edit them in: [agent_system/environments/prompts](./agent_system/environments/prompts/).
 
 
-## 3. Add New Environments
+## 4. Add New Environments
 To add a new environment, 
 1. Create your environment package (gym-style interface and multi-process execution) in [agent_system/environments/env_package/](./agent_system/environments/env_package/)
 2. Define the corresponding prompt files in [agent_system/environments/prompts](./agent_system/environments/prompts/). 
@@ -354,7 +361,7 @@ For a reference implementation, see the webshop environment:
 We welcome and appreciate all contributions! If you have ideas to improve `verl-agent`, please feel free to submit a pull request (PR).
 
 Example contributions include:
-- **APPWorld Bug Fixes**: Fixed compatibility issues and ensured stable integration with the experimental APPWorld environment.
+- **AppWorld Bug Fixes**: Fixed compatibility issues and ensured stable integration with the experimental AppWorld environment.
 - **Asynchronous Rollout**: Improved training efficiency and throughput by supporting asynchronous rollout pipelines.
 - **Additional Environments**: Added support for additional interactive environments to expand the benchmark coverage and task diversity.
 

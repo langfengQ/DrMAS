@@ -5,7 +5,7 @@
 - [2. WebShop](#2-webshop)  
 - [3. Sokoban](#3-sokoban)  
 - [4. Gym Cards](#4-gym-cards)  
-- [5. APPWorld (Experimental)](#5-appworld-experimental)  
+- [5. AppWorld (Experimental)](#5-appworld-experimental)  
 
 ## 1. ALFWorld
 Install with pip:
@@ -80,8 +80,8 @@ pip3 install gymnasium==0.29.1
 pip3 install stable-baselines3==2.6.0
 ```
 ---
-### 5. APPWorld (Experimental)
-Install APPWorld package
+### 5. AppWorld (Experimental)
+Install AppWorld package
 ```bash
 cd repo_root/
 pip install git+https://github.com/StonyBrookNLP/appworld.git
@@ -91,7 +91,7 @@ pip install vllm==0.8.5
 ```
 You can ignore the warning of incompatiblity for appworld, because we don't run appworld in `verl-agent` environment.
 
-Create a dedicated conda environment `appworld` for the APPWorld server:
+Create a dedicated conda environment `appworld` for the AppWorld server:
 ```bash
 conda create -n appworld python=3.12 -y
 conda activate appworld

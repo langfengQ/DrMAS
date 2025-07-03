@@ -283,10 +283,17 @@ ray_init:
   num_cpus: null # `None` means using all CPUs, which might cause hang if limited in systems like SLURM. Please set to a number allowed then.
 
 
+agent:
+  multi_agent: False # True for multi-agent training, False for single-agent training
+  agent_list: ["Reflexion Agent", "Action Agent", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "Action Agent", "Memory Agent"]
+  executor_type: chain
+
+
 env:
   env_name: alfworld/AlfredTWEnv
   seed: 0
   max_steps: 50
+  history_length: 2
   rollout:
     n: -1 # the group number of envs (for GRPO and GiGPO). -1 means disable env grouping.
 

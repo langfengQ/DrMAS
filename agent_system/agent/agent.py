@@ -6,11 +6,10 @@ Each agent calls the LLM policy (``actor_rollout_wg``) in its
 """
 from typing import Dict, Any, Callable, Optional, List, Tuple
 import copy
-import verl.utils.torch_functional as verl_F
-from verl.utils.model import compute_position_id_with_mask
 from verl import DataProto
 from transformers import PreTrainedTokenizer
-from agent_system.multi_turn_rollout.utils import to_list_of_dict, torch_to_numpy, filter_group_data, preprocess_batch
+from agent_system.multi_turn_rollout.utils import preprocess_batch
+from agent_system.agent.utils import tag_projection
 
 from agent_system.agent.prompts import AGENT_PROMPTS
 
@@ -47,6 +46,9 @@ class BaseAgent:
         self.processor = processor
         self.config = config
 
+        self.start_tag = None
+        self.end_tag = None
+
         # Check if prompt is defined for this agent via calling the property
         if not hasattr(self, 'prompt') or not isinstance(self.prompt, str):
             raise ValueError(f"Agent '{self.name}' must define a 'prompt' property.")
@@ -56,25 +58,34 @@ class BaseAgent:
 
     @property
     def prompt(self) -> str:
-        """Return the prompt template for the ReflexionAgent."""
+        """Return the prompt template"""
         return AGENT_PROMPTS[self.name]
 
-    def build_prompt(self, env_obs: Dict[str, Any], team_context: List[str]) -> str:
+    def build_prompt(self, env_obs: Dict[str, Any], team_context: List[str], step: int) -> str:
         """Build the prompt for the agent based on the observation."""
         # Naive Implementation
         obs = copy.deepcopy(env_obs)
         bs = len(obs['text'])
         for i in range(bs):
-            obs['text'][i] = self.prompt.format(env_prompt=obs['text'][i],
-                                                team_context=team_context[i],
-                                                )
+            if self.start_tag is not None and self.end_tag is not None:
+                obs['text'][i] = self.prompt.format(env_prompt=obs['text'][i],
+                                                    team_context=team_context[i],
+                                                    step=step,
+                                                    start_tag=self.start_tag,
+                                                    end_tag=self.end_tag)
+            else:
+                obs['text'][i] = self.prompt.format(env_prompt=obs['text'][i],
+                                                    team_context=team_context[i],
+                                                    step=step)
         return obs
 
     def postprocess_batch(self, team_context: List[str], text_response: str) -> List[str]:
         """Update the observation dictionary with the text response."""
         # Naive append of the latest responses to observations
         for i in range(len(team_context)):
-            team_context[i] = team_context[i] + f"\n{self.name} Response:\n{text_response[i]}\n"
+            if team_context[i] == "": 
+                team_context[i] = "Some of your teammates have already shared their thoughts for the current step. Their outputs are as follows:\n"
+            team_context[i] = team_context[i] + f"\n{self.name}:\n{text_response[i]}\n"
         return team_context
 
     def _generate_with_llm(self, batch: DataProto, actor_rollout_wg, meta_info) -> Tuple[DataProto, List[str]]:
@@ -99,6 +110,9 @@ class BaseAgent:
         
         text_repsonses = self.tokenizer.batch_decode(batch.batch['responses'], skip_special_tokens=True)
 
+        text_repsonses, valids = tag_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
+        batch.non_tensor_batch['is_action_valid'] = valids
+
         return batch, text_repsonses
 
     def call(
@@ -107,6 +121,7 @@ class BaseAgent:
         env_obs: Dict[str, Any],
         team_context: List[str],
         actor_rollout_wg,
+        step: int,
     ) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a response based on the observation and the batch.
         Args:
@@ -117,6 +132,7 @@ class BaseAgent:
                 - 'anchor' (None or Any): Anchor observation without any histories or additional info. (for GiGPO only).
             team_context (List[str]): Contextual information from the team.
             actor_rollout_wg: The LLM policy for acting.
+            step: environment step
         Returns:
             Tuple[DataProto, List[str], List[str]]:
                 - batch (DataProto): The processed batch after generation.
@@ -129,14 +145,19 @@ class BaseAgent:
 # =============================================================================
 # Reference agents (Memory / Planner / Action) using LLM
 # =============================================================================
-@AgentRegistry.register("ReflexionAgent")
+@AgentRegistry.register("Reflexion Agent")
 class ReflexionAgent(BaseAgent):
     def __init__(self, tokenizer: PreTrainedTokenizer, processor,config: Any):
-        super().__init__("ReflexionAgent", tokenizer=tokenizer, processor=processor,config=config)
+        super().__init__("Reflexion Agent", tokenizer=tokenizer, processor=processor,config=config)
+        self.start_tag = "<reflexion>"
+        self.end_tag = "</reflexion>"
 
-    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg) -> Tuple[DataProto, List[str], List[str]]:
+    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
-        obs = self.build_prompt(env_obs, team_context)
+        if step == 0:
+            return None, None, team_context
+        
+        obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
                                     obs=obs, 
                                     config=self.config, 
@@ -148,14 +169,16 @@ class ReflexionAgent(BaseAgent):
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context
 
-@AgentRegistry.register("PlanningAgent")
+@AgentRegistry.register("Planning Agent")
 class PlanningAgent(BaseAgent):
     def __init__(self, tokenizer: PreTrainedTokenizer, processor, config: Any):
-        super().__init__("PlanningAgent", tokenizer=tokenizer, processor=processor,config=config)
+        super().__init__("Planning Agent", tokenizer=tokenizer, processor=processor,config=config)
+        self.start_tag = "<plan>"
+        self.end_tag = "</plan>"
     
-    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg) -> Tuple[DataProto, List[str], List[str]]:
+    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
-        obs = self.build_prompt(env_obs, team_context)
+        obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
                                     obs=obs, 
                                     config=self.config, 
@@ -168,17 +191,19 @@ class PlanningAgent(BaseAgent):
         return batch, text_repsonses, team_context
 
 
-@AgentRegistry.register("ActionAgent")
+@AgentRegistry.register("Action Agent")
 class ActionAgent(BaseAgent):
     def __init__(self, tokenizer: PreTrainedTokenizer, processor, config: Any):
-        super().__init__("ActionAgent", tokenizer=tokenizer, processor=processor,config=config)
+        super().__init__("Action Agent", tokenizer=tokenizer, processor=processor,config=config)
+        self.start_tag = "<action>"
+        self.end_tag = "</action>"
     
     def projection(self, text_repsonses: List[str]) -> List[str]:
         return [response.strip() for response in text_repsonses]
 
-    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg) -> Tuple[DataProto, List[str], List[str]]:
+    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
-        obs = self.build_prompt(env_obs, team_context)
+        obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
                                     obs=obs, 
                                     config=self.config, 
@@ -190,6 +215,27 @@ class ActionAgent(BaseAgent):
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context
 
+
+@AgentRegistry.register("Memory Agent")
+class MemoryAgent(BaseAgent):
+    def __init__(self, tokenizer: PreTrainedTokenizer, processor, config: Any):
+        super().__init__("Memory Agent", tokenizer=tokenizer, processor=processor,config=config)
+        self.start_tag = "<memory>"
+        self.end_tag = "</memory>"
+    
+    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
+        """Generate a summary of the conversation history."""
+        obs = self.build_prompt(env_obs, team_context, step)
+        batch = preprocess_batch(gen_batch=gen_batch, 
+                                    obs=obs, 
+                                    config=self.config, 
+                                    tokenizer=self.tokenizer, 
+                                    processor=self.processor,
+                                    )
+        batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, gen_batch.meta_info)
+
+        team_context = self.postprocess_batch(team_context, text_repsonses)
+        return batch, text_repsonses, team_context
 
 # =============================================================================
 __all__ = [
