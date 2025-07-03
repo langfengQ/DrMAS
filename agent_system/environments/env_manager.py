@@ -48,7 +48,6 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
             actions, valids = self.projection_f(text_actions, self.envs.get_admissible_commands)
         else:
             actions = text_actions
-            valids = [1] * len(text_actions)
 
         text_obs, image_obs, rewards, dones, infos = self.envs.step(actions)
         self.memory.store({'text_obs': self.pre_text_obs, 'action': actions})
@@ -59,8 +58,9 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
             infos = set_gamefile(infos, self.gamefile)
 
         # add action_valid to infos
-        for i, info in enumerate(infos):
-            info['is_action_valid'] = to_numpy(valids[i])
+        if not self.config.agent.multi_agent:
+            for i, info in enumerate(infos):
+                info['is_action_valid'] = to_numpy(valids[i])
 
         next_observations = {'text': full_text_obs, 'image': image_obs, 'anchor': text_obs}
         rewards = to_numpy(rewards)
@@ -199,12 +199,12 @@ class SokobanEnvironmentManager(EnvironmentManagerBase):
             actions, valids = self.projection_f(text_actions)
         else:
             actions = text_actions
-            valids = [1] * len(text_actions)
 
         next_obs, rewards, dones, infos = self.envs.step(actions)
 
-        for i, info in enumerate(infos):
-            info['is_action_valid'] = to_numpy(valids[i])
+        if not self.config.agent.multi_agent:
+            for i, info in enumerate(infos):
+                info['is_action_valid'] = to_numpy(valids[i])
 
         self.memory.store({'text_obs': self.pre_text_obs, 'action': [self.ACTION_LOOKUP[act] for act in actions]})
         if self.is_multi_modal:
@@ -328,7 +328,6 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
             actions, valids = self.projection_f(text_actions)
         else:
             actions = text_actions
-            valids = [1] * len(text_actions)
 
         next_obs, rewards, dones, infos = self.envs.step(actions)
 
@@ -342,9 +341,10 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
             'image': None,
             'anchor': next_obs.copy()
         }
-        # add action_valid to infos
-        for i, info in enumerate(infos):
-            info['is_action_valid'] = to_numpy(valids[i])
+
+        if not self.config.agent.multi_agent:
+            for i, info in enumerate(infos):
+                info['is_action_valid'] = to_numpy(valids[i])
 
         rewards = to_numpy(rewards)
         dones = to_numpy(dones)
@@ -478,7 +478,6 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
             actions, valids = self.projection_f(text_actions)
         else:
             actions = text_actions
-            valids = [1] * len(text_actions)
 
         text_obs, rewards, dones, infos = self.envs.step(actions)
 
@@ -487,9 +486,9 @@ class AppWorldEnvironmentManager(EnvironmentManagerBase):
 
         full_text_obs = self.build_text_obs(text_obs)
 
-        # add action_valid to infos
-        for i, info in enumerate(infos):
-            info['is_action_valid'] = to_numpy(valids[i])
+        if not self.config.agent.multi_agent:
+            for i, info in enumerate(infos):
+                info['is_action_valid'] = to_numpy(valids[i])
 
         next_observations = {'text': full_text_obs, 'image': None, 'anchor': text_obs}
         rewards = to_numpy(rewards)

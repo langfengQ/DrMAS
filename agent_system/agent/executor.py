@@ -65,7 +65,11 @@ class BaseExecutor:
     def update_memory(self, text_repsonses: List[str]):
         """Update the memory of the agents with the latest text responses."""
         assert "Memory Agent" in self.agent_list, "Memory Agent is required to update memory. Please add it to the agent_list list."
-        self.memory = text_repsonses
+        if self.memory is None:
+            self.memory = text_repsonses
+        else:
+            for i in range(len(self.memory)):
+                self.memory[i] = text_repsonses[i] if len(text_repsonses[i]) > 1 else self.memory[i]
 
     def run(
         self,

@@ -1,19 +1,19 @@
 set -x
 ENGINE=${1:-vllm}
-export CUDA_VISIBLE_DEVICES=4,5,6,7
+export CUDA_VISIBLE_DEVICES=4,5
 
 train_data_size=16
 val_data_size=128
 group_size=8
 
 multi_agent=True
-agent_list='["Reflexion Agent","Action Agent","Memory Agent"]'
+agent_list='["Action Agent","Memory Agent"]'
 
 algorithm=gigpo
 mode=mean_std_norm # "mean_norm" or "mean_std_norm"
-model=Qwen/Qwen2.5-7B-Instruct
+model=Qwen/Qwen2.5-3B
 
-experiment_name="${algorithm}_$(basename $model)_${group_size}group_${mode}_ma_${multi_agent}_RAM"
+experiment_name="${algorithm}_$(basename $model)_${group_size}group_${mode}_ma_${multi_agent}_AM"
 
 # We only use data preparation to indicate the modality and the data size.
 python3 -m examples.data_preprocess.prepare \
@@ -27,7 +27,7 @@ python3 -m verl.trainer.main_ppo \
     data.val_files=$HOME/data/verl-agent/text/test.parquet \
     data.train_batch_size=$train_data_size \
     data.val_batch_size=$val_data_size \
-    data.max_prompt_length=4096 \
+    data.max_prompt_length=5120 \
     data.max_response_length=512 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
@@ -70,7 +70,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='verl_multiagent_webshop' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \
     trainer.test_freq=5 \

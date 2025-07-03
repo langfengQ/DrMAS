@@ -61,7 +61,7 @@ class BaseAgent:
         """Return the prompt template"""
         return AGENT_PROMPTS[self.name]
 
-    def build_prompt(self, env_obs: Dict[str, Any], team_context: List[str]) -> str:
+    def build_prompt(self, env_obs: Dict[str, Any], team_context: List[str], step: int) -> str:
         """Build the prompt for the agent based on the observation."""
         # Naive Implementation
         obs = copy.deepcopy(env_obs)
@@ -70,11 +70,13 @@ class BaseAgent:
             if self.start_tag is not None and self.end_tag is not None:
                 obs['text'][i] = self.prompt.format(env_prompt=obs['text'][i],
                                                     team_context=team_context[i],
+                                                    step=step,
                                                     start_tag=self.start_tag,
                                                     end_tag=self.end_tag)
             else:
                 obs['text'][i] = self.prompt.format(env_prompt=obs['text'][i],
-                                                    team_context=team_context[i])
+                                                    team_context=team_context[i],
+                                                    step=step)
         return obs
 
     def postprocess_batch(self, team_context: List[str], text_response: str) -> List[str]:
@@ -108,7 +110,7 @@ class BaseAgent:
         
         text_repsonses = self.tokenizer.batch_decode(batch.batch['responses'], skip_special_tokens=True)
 
-        text_repsonses, valids  = tag_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
+        text_repsonses, valids = tag_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
         batch.non_tensor_batch['is_action_valid'] = valids
 
         return batch, text_repsonses
@@ -155,7 +157,7 @@ class ReflexionAgent(BaseAgent):
         if step == 0:
             return None, None, team_context
         
-        obs = self.build_prompt(env_obs, team_context)
+        obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
                                     obs=obs, 
                                     config=self.config, 
@@ -176,7 +178,7 @@ class PlanningAgent(BaseAgent):
     
     def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
-        obs = self.build_prompt(env_obs, team_context)
+        obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
                                     obs=obs, 
                                     config=self.config, 
@@ -201,7 +203,7 @@ class ActionAgent(BaseAgent):
 
     def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
-        obs = self.build_prompt(env_obs, team_context)
+        obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
                                     obs=obs, 
                                     config=self.config, 
@@ -223,7 +225,7 @@ class MemoryAgent(BaseAgent):
     
     def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
-        obs = self.build_prompt(env_obs, team_context)
+        obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
                                     obs=obs, 
                                     config=self.config, 

@@ -15,7 +15,7 @@ Your responsibilities are strictly limited to:
 - Identify mistakes, missed opportunities, inefficiencies, or false assumptions. 
 - Suggest improvements that could guide better decisions in the future.
 
-Based on all information above, you should first reason step-by-step about the past events. This reasoning process MUST be enclosed within <think> </think> tags.  
+You are now at step {step}. Based on all information above, you should first reason step-by-step about the past events. This reasoning process MUST be enclosed within <think> </think> tags.  
 Once you've finished your reasoning, provide a clear and insightful reflection enclosed within {start_tag} {end_tag} tags.
 """
 ,
@@ -34,8 +34,8 @@ Your responsibilities are strictly limited to:
 - Formulating a high-level plan that addresses the current situation
 - Ensuring the plan aligns with long-term task success
 
-Based on all information above, you should first reason step-by-step about the planning process. This reasoning process MUST be enclosed within <think> </think> tags.  
-Once you've finished your reasoning, present your final plan within {start_tag} {end_tag} tags.
+You are now at step {step}. Based on all information above, you should first reason step-by-step about the planning process. This reasoning process MUST be enclosed within <think> </think> tags.  
+Once you've finished your reasoning, present your final plan enclosed within {start_tag} {end_tag} tags.
 """
 ,
 
@@ -49,9 +49,9 @@ Once you've finished your reasoning, present your final plan within {start_tag} 
 
 You are an "Action Agent", and your role within your team is to determine the final action for the current step.
 
-Based on all information above, please decide on the most appropriate admissible action.
+You are now at step {step}. Based on all information above, please decide on the most appropriate admissible action.
 You should first reason step-by-step about the current situation. This reasoning process MUST be enclosed within <think> </think> tags.
-Once you've finished your reasoning, select one admissible action and present it clearly within {start_tag} {end_tag} tags.
+Once you've finished your reasoning, select one admissible action and MUST present it enclosed within {start_tag} {end_tag} tags.
 """,
 
 
@@ -63,18 +63,18 @@ Once you've finished your reasoning, select one admissible action and present it
 
 -------
 
-You are a "Memory Agent", and your role within your team is to maintain a complete memory of all important details and the interaction history between your team and the environment.
+You are a "Memory Agent", and your role within your team is to maintain a complete memory for all important history details.
 
 Your responsibilities:
 - Maintain an objective and accurate log of important environmental details and the team's actions.
 - Do not include internal team reasoning, planning, or discussions.
-- Record one entry for each environment step using the format: "Step N: environment observation and the team's action"
-- The recorded environment observation may include key objects, paths, choices, constraints, numerical values, opportunities, identifiers and discovered or potential alternatives.
+- Record one entry for each environment step using the format: "Step N: ..."
+- The environment observation must be a high-level summary in your own words — do NOT copy raw observation text.
+- Be sure to record meaningful and high-impact details (e.g., number, price, names, and identifiers) from the environment observation that could inform future decisions, or help recover from incorrect or suboptimal decisions.
 - In this update, append one new entry for the current step to the existing memory buffer.
 - You MUST output the full memory buffer, from step 1 to the current step, including all previous entries.
 
-Now, based on all the information above, you should first reason step-by-step about what information will be critical for future decisions or reflexion. This reasoning process MUST be enclosed within <think> </think> tags.
-Once you've finished your reasoning, provide an updated memory buffer enclosed within {start_tag} {end_tag} tags.
+You are now at step {step}. Based on all the information above, provide an updated, concise memory buffer enclosed within {start_tag} {end_tag} tags.
 The memory buffer should look like:
 {start_tag}
 step 1: ...
