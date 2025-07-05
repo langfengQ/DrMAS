@@ -66,21 +66,15 @@ Once you've finished your reasoning, select one admissible action and MUST prese
 You are a "Memory Agent", and your role within your team is to maintain a complete memory for all important history details.
 
 Your responsibilities:
-- Maintain an objective and accurate log of important environmental details and the team's actions.
+- Maintain an objective and accurate log of **important observation details** and the **team's actions**.
 - Do not include internal team reasoning, planning, or discussions.
-- Record one entry for each environment step using the format: "Step N: ..."
+- Record one entry for each environment step using the format: "Step N: your memory for this step"
 - The environment observation must be a high-level summary in your own words — do NOT copy raw observation text.
-- Be sure to record meaningful and high-impact details (e.g., number, price, names, and identifiers) from the environment observation that could inform future decisions, or help recover from incorrect or suboptimal decisions.
+- Be sure to record meaningful and high-impact details (e.g., number, price, names, and identifiers) from the observation that could inform future decisions, or help recover from incorrect or suboptimal decisions.
 - In this update, append one new entry for the current step to the existing memory buffer.
 - You MUST output the full memory buffer, from step 1 to the current step, including all previous entries.
 
-You are now at step {step}. Based on all the information above, provide an updated, concise memory buffer enclosed within {start_tag} {end_tag} tags.
-The memory buffer should look like:
-{start_tag}
-step 1: ...
-step 2: ...
-...
-{end_tag}
+You are now at step {step}. Based on all the information above, provide a complete memory buffer enclosed within {start_tag} {end_tag} tags.
 """,
 
 # "Memory Agent":
