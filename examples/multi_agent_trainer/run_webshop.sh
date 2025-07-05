@@ -1,19 +1,33 @@
 set -x
 ENGINE=${1:-vllm}
-export CUDA_VISIBLE_DEVICES=4,5
+export CUDA_VISIBLE_DEVICES=2,3
+
+multi_agent=True
+agent_list='["Action Agent","Memory Agent"]'
 
 train_data_size=16
 val_data_size=128
 group_size=8
 
-multi_agent=True
-agent_list='["Action Agent","Memory Agent"]'
-
-algorithm=gigpo
+algorithm=grpo
 mode=mean_std_norm # "mean_norm" or "mean_std_norm"
-model=Qwen/Qwen2.5-3B
+model=Qwen/Qwen2.5-1.5B-Instruct
 
-experiment_name="${algorithm}_$(basename $model)_${group_size}group_${mode}_ma_${multi_agent}_AM"
+if [ "$multi_agent" = "True" ]; then
+    num_agents=$(echo "$agent_list" | jq length)
+    agent_name_tag=$(echo "$agent_list" | jq -r '.[]' | sed 's/ Agent//g' | paste -sd+ -)
+else
+    num_agents=1
+    agent_name_tag="Single"
+fi
+
+ppo_mini_batch_size=$((num_agents * 128)) # dynamically compute batch size to ensure the stable update times per interation
+experiment_name="${algorithm}_$(basename $model)_${group_size}group_${agent_name_tag}"
+
+echo "Agent List: $agent_list"
+echo "Number of Agents: $num_agents"
+echo "ppo_mini_batch_size: $ppo_mini_batch_size"
+echo "agent_name_tag: $agent_name_tag"
 
 # We only use data preparation to indicate the modality and the data size.
 python3 -m examples.data_preprocess.prepare \
@@ -35,10 +49,10 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.path=$model \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=192 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=$ppo_mini_batch_size \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.01 \
+    actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
