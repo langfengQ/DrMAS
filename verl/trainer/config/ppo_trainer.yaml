@@ -305,3 +305,8 @@ env:
   webshop:
     use_small: True
     human_goals: False
+  search:
+    log_requests: false
+    search_url: "http://127.0.0.1:8010/retrieve"
+    topk: 3
+    timeout: 60

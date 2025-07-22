@@ -68,9 +68,9 @@ def preprocess_fn(
         dict: Contains processed input data such as input_ids, attention_mask, etc.
     """
 
-    # raw_prompt = gen_batch.non_tensor_batch['raw_prompt'][item]
+    raw_prompt = gen_batch.non_tensor_batch['raw_prompt'][item]
     data_source = gen_batch.non_tensor_batch['data_source'][item]
-    
+
     # Get observation components
     obs_texts = obs.get('text', None)
     obs_images = obs.get('image', None)
@@ -88,18 +88,23 @@ def preprocess_fn(
     #     obs_content = obs_content.replace('<image>', '')
 
     # Build chat structure
-    obs_content = ''
-    if obs_text is not None:
-        obs_content += obs_text
-    else:
-        print(f"Warning: No text observation found!")
+    system_prompt = "You are a helpful and harmless assistant."
+    for message in raw_prompt:
+        if message['role'] == 'system':
+            system_prompt = message['content']
+        # if message['role'] == 'user':
+        #     context_from_dataset = message['content']
 
-    
-    chat = np.array([{
-        "content": obs_content,
-        "role": "user",
-    }])
-    
+    # if len(context_from_dataset) > 0 and obs_text is not None:
+    #     obs_content = obs_text.replace('{placeholder_of_dataset_context}', context_from_dataset)
+    # else:
+    #     print(f"Warning: No text observation found!")
+
+    obs_content = obs_text
+    chat = np.array([
+        {"content": system_prompt, "role": "system"},
+        {"content": obs_content, "role": "user",}
+        ])
     # Apply chat template
     prompt_with_chat_template = tokenizer.apply_chat_template(
         chat,

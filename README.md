@@ -139,7 +139,7 @@ We have released our models on [HuggingFace](https://huggingface.co/collections/
 # Installation
 ## Install veRL
 ```bash
-conda create -n verl-agent python==3.12 -y
+conda create -n verl-agent python==3.10 -y
 conda activate verl-agent
 
 pip3 install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
@@ -177,12 +177,6 @@ alfworld-play-tw
 ---
 
 ### 2. WebShop
-WebShop requires Python <=3.10, so begin by creating a new `verl-agent-webshop` environment
-```bash
-conda create -n verl-agent-webshop python==3.10 -y
-conda activate verl-agent-webshop
-```
-
 Install WebShop
 ```bash
 cd ./agent_system/environments/env_package/webshop/webshop
@@ -241,9 +235,69 @@ appworld install
 appworld download data
 ```
 
+### 6. Tools
+```bash
+cd ./agent_system/environments/env_package/tools/third_party
+pip install -e .
+pip install uv
+```
 
-<!-- > ⚠️ **Important:**  
-To run an agent in any of these environments, you must first install and configure the corresponding environment. Please refer to the [Environment Setup Guide](agent_system/environments/README.md) for step-by-step installation instructions. -->
+Prepare data:
+```bash
+cd repo_root/
+local_dir=~/data/searchR1
+uv run --isolated agent_system/environments/env_package/tools/third_party/skyrl_gym/search/searchr1_dataset.py --local_dir $local_dir
+```
+
+# Start the Search Engine
+Since faiss-gpu is not available via pip, we setup a separate conda environment for the local retrieval server. Running this server will use around 6GB of GPU memory per GPU, so make sure to account for this in your training run configuration.
+
+## Retriever environments 
+```bash
+# Create and activate the retriever environment with Python 3.10
+conda create -n retriever python=3.10 -y
+conda activate retriever
+
+# Install PyTorch (with GPU support) and related libraries
+conda install numpy==1.26.4 # needed to stop incompatible version of numpy from being installed via pip
+pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+
+# Install other Python packages
+pip install transformers datasets pyserini huggingface_hub
+
+# Install the GPU version of faiss
+conda install faiss-gpu==1.8.0 -c pytorch -c nvidia -y
+
+# Install the API service framework
+pip install uvicorn fastapi
+```
+
+## Download the Index
+```bash
+conda activate retriever
+
+local_dir=~/data/searchR1
+python examples/search/searchr1_download.py --local_dir $local_dir
+cat $local_dir/part_* > $local_dir/e5_Flat.index
+gzip -d $local_dir/wiki-18.jsonl.gz
+```
+
+## Start the Local Flat e5 Retrieval Server 
+```bash
+conda activate retriever
+
+# redirect the output to a file to avoid cluttering the terminal
+# we have observed outputting to the terminal causing spikes in server response times
+bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log 
+```
+
+## Launch your Training Job
+Now from your base environment, you can launch your training run (which will use uv to package dependencies, separately from the retriever environment).
+
+```bash
+    export WANDB_API_KEY=your_wandb_api_key
+    bash examples/search/run_search.sh
+```
 
 # Run Examples
 ## RL Training
