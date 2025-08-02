@@ -9,6 +9,9 @@ from collections import defaultdict, Counter
 from verl import DataProto
 import uuid
 
+from difflib import SequenceMatcher
+from typing import Sequence, List, Dict, Any
+
 # ---------------------------------------------------------- #
 # --------------- General Functions of GiGPO --------------- #
 # ---------------------------------------------------------- #
@@ -49,6 +52,9 @@ def summarize_group_size(group_size: list):
         if prop:
             print(f"{size:>4} | {cnt:>5} | {prop:>9.2%}")
             
+def are_similar(a: str, b: str, threshold: float = 0.95) -> bool:
+    """Return True if similarity ratio ≥ threshold."""
+    return SequenceMatcher(None, a, b).ratio() >= threshold
 
 def compute_step_discounted_returns(batch: DataProto, gamma: float):
     rewards = batch.non_tensor_batch['rewards'].astype(np.float32)
@@ -99,7 +105,8 @@ def compute_gigpo_outcome_advantage(token_level_rewards: torch.Tensor,
                                    traj_index: np.array,
                                    epsilon: float = 1e-6,
                                    step_advantage_w: float = 1.0,
-                                   mode: str = "mean_norm"
+                                   mode: str = "mean_norm",
+                                   sim_thresh: float = 1.0,
                                    ):
     
     if mode == "mean_std_norm":
@@ -113,7 +120,7 @@ def compute_gigpo_outcome_advantage(token_level_rewards: torch.Tensor,
     episode_advantages = episode_norm_reward(token_level_rewards, response_mask, index, traj_index, epsilon, remove_std)
     
     # Compute step_group_uids
-    step_group_uids = build_step_group(anchor_obs, index)
+    step_group_uids = build_step_group(anchor_obs, index, sim_thresh)
 
     # Compute step-level group reward
     step_advantages = step_norm_reward(step_rewards, response_mask, step_group_uids, epsilon, remove_std)
@@ -191,7 +198,7 @@ def episode_norm_reward(token_level_rewards: torch.Tensor,
     return episode_advantages
 
 
-def build_step_group(anchor_obs: np.array, index: np.array, summarize: bool = False):
+def build_step_group(anchor_obs: np.array, index: np.array, sim_thresh: float = 1.0, summarize: bool = False):
     """
     Group observations by index and then cluster identical observations within each index group.
     Assigns a unique step_group_uid (UUID) to each cluster.
@@ -204,12 +211,16 @@ def build_step_group(anchor_obs: np.array, index: np.array, summarize: bool = Fa
         Array of episode_group_uid
     summarize : bool
         Whether to summarize the group sizes (default: True)
+    sim_thresh : float
+        Threshold for similarity to consider two observations as identical (default: 1.0, meaning exact match)
     
     Returns:
     --------
     np.array
         Array of step_group_uid values corresponding to the original anchor_obs array
     """
+    assert sim_thresh >= 0.0 and sim_thresh <= 1.0, "sim_thresh should be in [0, 1]"
+
     # Initialize the result array with placeholder values
     step_group_uids = np.empty(len(anchor_obs), dtype=object)
     
@@ -219,24 +230,50 @@ def build_step_group(anchor_obs: np.array, index: np.array, summarize: bool = Fa
     group_size = []
     # Process each unique index
     for idx in unique_indices:
-        # Get all observations for this index using np.where
-        indices = np.where(index == idx)[0]
-        obs_group = anchor_obs[indices]
-        
-        # Create clusters for identical observations
-        clusters = defaultdict(list)
-        for i, obs in enumerate(obs_group):
-            clusters[to_hashable(obs)].append(indices[i])  # Store the original index position
-        
-        # Assign unique step_group_uid to each cluster
-        for obs, original_indices in clusters.items():
-            # Generate a UUID for this cluster
-            uid = str(uuid.uuid4())
+        if sim_thresh == 1.0:
+            # Get all observations for this index using np.where
+            indices = np.where(index == idx)[0]
+            obs_group = anchor_obs[indices]
             
-            # Assign the same step_group_uid to all elements in this cluster
-            group_size.append(len(original_indices))
-            for original_idx in original_indices:
-                step_group_uids[original_idx] = uid
+            # Create clusters for identical observations
+            clusters = defaultdict(list)
+            for i, obs in enumerate(obs_group):
+                clusters[to_hashable(obs)].append(indices[i])  # Store the original index position
+            
+            # Assign unique step_group_uid to each cluster
+            for obs, original_indices in clusters.items():
+                # Generate a UUID for this cluster
+                uid = str(uuid.uuid4())
+                
+                # Assign the same step_group_uid to all elements in this cluster
+                group_size.append(len(original_indices))
+                for original_idx in original_indices:
+                    step_group_uids[original_idx] = uid
+        else:
+            locs = np.where(index == idx)[0]
+            obs_group = anchor_obs[locs]
+
+            # 动态维护簇：[{rep: str, locs: List[int]} ...]
+            clusters: List[Dict[str, Any]] = []
+
+            for obs, loc in zip(obs_group, locs):
+                # 尝试放入已有簇
+                placed = False
+                for cluster in clusters:
+                    if are_similar(obs, cluster["rep"], sim_thresh):
+                        cluster["locs"].append(loc)
+                        placed = True
+                        break
+                # 若没有匹配簇，则建立新簇
+                if not placed:
+                    clusters.append({"rep": obs, "locs": [loc]})
+
+            # 为每个簇分配 UUID
+            for cluster in clusters:
+                uid = str(uuid.uuid4())
+                group_size.append(len(cluster["locs"]))
+                for loc in cluster["locs"]:
+                    step_group_uids[loc] = uid
 
         # Validate that all elements have been assigned a uid
     if None in step_group_uids or np.any(step_group_uids == None):

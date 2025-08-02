@@ -627,6 +627,19 @@ class SearchEnvironmentManager(EnvironmentManagerBase):
 
         return postprocess_text_obs
 
+    def _process_batch(self, batch_idx, total_batch_list, total_infos, success):
+        # Find the last entry with active masks
+        for i in reversed(range(len(total_batch_list[batch_idx]))):
+            batch_item = total_batch_list[batch_idx][i]
+            if batch_item['active_masks']:
+                info = total_infos[batch_idx][i]
+                won_value = float(info['won'])
+                success['success_rate'].append(won_value)
+                
+                # Process game file if it exists
+                data_source = info.get("data_source")
+                success[f"{data_source}_success_rate"].append(won_value)
+                return  # Exit after finding the first active mask
 
 def make_envs(config):
     """

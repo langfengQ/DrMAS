@@ -146,7 +146,7 @@ def preprocess_fn(
                                                                         max_length=config.data.max_prompt_length,
                                                                         pad_token_id=tokenizer.pad_token_id,
                                                                         left_pad=True,
-                                                                        truncation='error')
+                                                                        truncation=config.data.truncation,)
     
     
 
@@ -161,12 +161,26 @@ def preprocess_fn(
     else:
         position_ids = compute_position_id_with_mask(attention_mask)
     
+
+    raw_prompt_ids = tokenizer.encode(raw_prompt, add_special_tokens=False)
+    if len(raw_prompt_ids) > config.data.max_prompt_length:
+        if config.data.truncation == "left":
+            raw_prompt_ids = raw_prompt_ids[-config.data.max_prompt_length :]
+        elif config.data.truncation == "right":
+            raw_prompt_ids = raw_prompt_ids[: config.data.max_prompt_length]
+        elif config.data.truncation == "middle":
+            left_half = config.data.max_prompt_length // 2
+            right_half = config.data.max_prompt_length - left_half
+            raw_prompt_ids = raw_prompt_ids[:left_half] + raw_prompt_ids[-right_half:]
+        elif config.data.truncation == "error":
+            raise RuntimeError(f"Prompt length {len(raw_prompt_ids)} is longer than {config.data.max_prompt_length}.")
+
     # Build final output dict
     row_dict.update({
         'input_ids': input_ids[0],
         'attention_mask': attention_mask[0],
         'position_ids': position_ids[0],
-        'raw_prompt_ids': tokenizer.encode(raw_prompt, add_special_tokens=False),
+        'raw_prompt_ids': raw_prompt_ids,
         'anchor_obs': _obs_anchor,
         'index': item,
         'data_source': data_source

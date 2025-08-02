@@ -71,7 +71,7 @@ def process_single_row(row, current_split_name, row_index):
         ground_truth = row.get("golden_answers", [])
 
     # Process data source
-    data_source_tagged = "searchR1_" + str(row.get("data_source", ""))
+    data_source_tagged = str(row.get("data_source", ""))
 
     # Build tools kwargs structure
     tools_kwargs = {

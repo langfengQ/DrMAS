@@ -62,6 +62,7 @@ Unlike prior approaches that simply concatenate full interaction histories, `ver
     - [3. Sokoban](#3-sokoban)  
     - [4. Gym Cards](#4-gym-cards)  
     - [5. AppWorld (Experimental)](#5-appworld-experimental)  
+    - [6. Search](#6-search)
 - [Run Examples](#run-examples)  
   - [RL Training](#rl-training)  
     - [1. GiGPO](#1-gigpo)  
@@ -235,24 +236,20 @@ appworld install
 appworld download data
 ```
 
-### 6. Tools
+### 6. Search
 ```bash
-cd ./agent_system/environments/env_package/tools/third_party
+cd ./agent_system/environments/env_package/search/third_party
 pip install -e .
-pip install uv
 ```
 
-Prepare data:
+Prepare dataset (data will be saved at `~/data/searchR1_processed_direct`):
 ```bash
 cd repo_root/
-local_dir=~/data/searchR1
-uv run --isolated agent_system/environments/env_package/tools/third_party/skyrl_gym/search/searchr1_dataset.py --local_dir $local_dir
+python examples/data_preprocess/preprocess_search_r1_dataset.py
 ```
 
-# Start the Search Engine
-Since faiss-gpu is not available via pip, we setup a separate conda environment for the local retrieval server. Running this server will use around 6GB of GPU memory per GPU, so make sure to account for this in your training run configuration.
 
-## Retriever environments 
+Since faiss-gpu is not available via pip, we setup a separate conda environment for the local retrieval server. Running this server will use around 6GB of GPU memory per GPU, so make sure to account for this in your training run configuration. Build Retriever environments:
 ```bash
 # Create and activate the retriever environment with Python 3.10
 conda create -n retriever python=3.10 -y
@@ -272,7 +269,7 @@ conda install faiss-gpu==1.8.0 -c pytorch -c nvidia -y
 pip install uvicorn fastapi
 ```
 
-## Download the Index
+Download the index:
 ```bash
 conda activate retriever
 
@@ -282,21 +279,13 @@ cat $local_dir/part_* > $local_dir/e5_Flat.index
 gzip -d $local_dir/wiki-18.jsonl.gz
 ```
 
-## Start the Local Flat e5 Retrieval Server 
+Start the local flat e5 retrieval server: 
 ```bash
 conda activate retriever
 
 # redirect the output to a file to avoid cluttering the terminal
 # we have observed outputting to the terminal causing spikes in server response times
 bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log 
-```
-
-## Launch your Training Job
-Now from your base environment, you can launch your training run (which will use uv to package dependencies, separately from the retriever environment).
-
-```bash
-    export WANDB_API_KEY=your_wandb_api_key
-    bash examples/search/run_search.sh
 ```
 
 # Run Examples
@@ -320,6 +309,9 @@ bash examples/gigpo_trainer/run_webshop.sh # WebShop
 ```bash
 bash examples/gigpo_trainer/run_sokoban.sh # Sokoban
 ```
+```bash
+bash examples/gigpo_trainer/run_search.sh # Search
+```
 ### 2. GRPO
 GRPO is a critic-free algorithm that estimates relative advantages based on a group of full episode trajectories.
 ```bash
@@ -327,6 +319,9 @@ bash examples/grpo_trainer/run_alfworld.sh # ALFWorld
 ```
 ```bash
 bash examples/grpo_trainer/run_webshop.sh # WebShop
+```
+```bash
+bash examples/grpo_trainer/run_search.sh # Search
 ```
 ### 3. PPO
 PPO is a classic actor-critic algorithm that updates the policy using a clipped objective to ensure stable learning. It requires a separate value network (critic) to estimate state values.

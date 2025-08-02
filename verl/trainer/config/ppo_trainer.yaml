@@ -247,6 +247,7 @@ algorithm:
   gigpo:
     step_advantage_w: 1.0
     mode: "mean_norm" # "mean_norm" or "mean_std_norm"
+    sim_thresh: 1.0 # similarity threshold for gigpo
   filter_groups: # DAPO from https://arxiv.org/abs/2503.14476
     enable: False
     max_num_gen_batches: 10
@@ -307,6 +308,6 @@ env:
     human_goals: False
   search:
     log_requests: false
-    search_url: "http://127.0.0.1:8010/retrieve"
+    search_url: "http://127.0.0.1:8000/retrieve" # also support multiple urls: ["http://127.0.0.1:8000/retrieve", "http://127.0.0.1:8001/retrieve"]
     topk: 3
     timeout: 60

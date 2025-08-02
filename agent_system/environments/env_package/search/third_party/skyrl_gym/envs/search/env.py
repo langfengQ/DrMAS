@@ -31,6 +31,8 @@ class SearchEnv(BaseTextEnv):
         self.ground_truth = extras["ground_truth"]
         self.max_turns = extras["max_turns"] if "max_turns" in extras else 3
 
+        self.data_source = extras.get("data_source", "unknown")
+
         # Chat history
         # role (user, assistant), content (tool observation or LLM response)
         self.chat_history: ConversationType = []
@@ -89,7 +91,7 @@ class SearchEnv(BaseTextEnv):
 
         if done:
             return BaseTextEnvStepOutput(
-                observations=[], reward=reward, done=done, metadata={}, postprocessed_action=action
+                observations=[], reward=reward, done=done, metadata={"data_source": self.data_source}, postprocessed_action=action
             )
 
         try:
@@ -113,6 +115,7 @@ class SearchEnv(BaseTextEnv):
             "tool_group": "SearchToolGroup",
             "tool_name": "search",
             "tool_input": query,
+            "data_source": self.data_source,
         }
 
         # Update chat history

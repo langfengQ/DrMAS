@@ -4,7 +4,8 @@ from typing import Any, Dict, List, Tuple
 
 import gym
 import numpy as np
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
+from copy import deepcopy 
 
 
 class SearchMultiProcessEnv(gym.Env):
@@ -27,15 +28,29 @@ class SearchMultiProcessEnv(gym.Env):
 
         from agent_system.environments.env_package.search.third_party.skyrl_gym.envs.search.env import SearchEnv
 
-        self.env_num = env_num
-        self.group_n = group_n
+        self.env_num   = env_num
+        self.group_n   = group_n
         self.batch_size = env_num * group_n
-        self.is_train = is_train
+        self.is_train  = is_train
         self.max_steps = env_config.max_steps
 
         self._rng = np.random.RandomState(seed)
 
-        self.envs = [SearchEnv(env_config.search) for _ in range(self.batch_size)]
+        # ---------- 关键改动开始 ----------
+        # 1) 把 search_url 统一转成 list
+        search_cfg  = env_config.search
+        search_urls = search_cfg.search_url
+        if not isinstance(search_urls, ListConfig):
+            search_urls = [search_urls]
+
+        n_clients = len(search_urls)
+
+        # 2) round‑robin 为每个 env 选一个 url
+        self.envs = []
+        for idx in range(self.batch_size):
+            cfg_i = deepcopy(search_cfg)          # 避免修改原始 config
+            cfg_i.search_url = search_urls[idx % n_clients]
+            self.envs.append(SearchEnv(cfg_i))
 
         max_workers = min(self.batch_size, 256)
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
@@ -47,10 +62,11 @@ class SearchMultiProcessEnv(gym.Env):
         extras = {
             "ground_truth": kwargs["search"]["create_kwargs"]["ground_truth"],
             "max_turns": self.max_steps,
+            "data_source": kwargs["search"]["create_kwargs"].get("data_source", "unknown")
         }
         env.reset(extras)
         obs = kwargs["search"]["create_kwargs"]["question"]
-        info = {}
+        info = {'data_source': kwargs["search"]["create_kwargs"].get("data_source", "unknown")}
         return obs, info
     
     def _sync_step(self, env, action: str):
@@ -76,6 +92,7 @@ class SearchMultiProcessEnv(gym.Env):
                 "create_kwargs": {
                     "ground_truth": "",
                     "question": "",
+                    "data_source": "unkown",
                 }
             }
         }

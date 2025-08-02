@@ -11,4 +11,5 @@ python examples/search/retriever/retrieval_server.py \
   --topk 3 \
   --retriever_name $retriever_name \
   --retriever_model $retriever_path \
-  --faiss_gpu
+  --faiss_gpu \
+  --port 8000 \

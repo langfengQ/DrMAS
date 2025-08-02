@@ -7,6 +7,7 @@ Each agent calls the LLM policy (``actor_rollout_wg``) in its
 from typing import Dict, Any, Callable, Optional, List, Tuple
 import copy
 from verl import DataProto
+from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from transformers import PreTrainedTokenizer
 from agent_system.multi_turn_rollout.utils import preprocess_batch
 from agent_system.agent.utils import tag_projection
@@ -104,7 +105,12 @@ class BaseAgent:
         )
 
         batch_input.meta_info = meta_info
-        batch_output = actor_rollout_wg.generate_sequences(batch_input)
+
+        # pad to be divisible by dp_size
+        batch_input_padded, pad_size = pad_dataproto_to_divisor(batch_input, actor_rollout_wg.world_size)
+        batch_output_padded = actor_rollout_wg.generate_sequences(batch_input_padded)
+        # # unpad
+        batch_output = unpad_dataproto(batch_output_padded, pad_size=pad_size)
 
         batch = batch.union(batch_output)
         
