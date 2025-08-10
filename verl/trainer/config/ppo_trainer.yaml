@@ -41,6 +41,8 @@ actor_rollout_ref:
     trust_remote_code: False
   actor:
     strategy: fsdp  # [fsdp, fsdp2], This is for backward-compatibility
+    use_adaptive_ppo_mini_batch_size: False
+    ppo_mini_update_num: 8
     ppo_mini_batch_size: 256
     ppo_micro_batch_size: null # will be deprecated, use ppo_micro_batch_size_per_gpu
     ppo_micro_batch_size_per_gpu: null
@@ -247,7 +249,7 @@ algorithm:
   gigpo:
     step_advantage_w: 1.0
     mode: "mean_norm" # "mean_norm" or "mean_std_norm"
-    sim_thresh: 1.0 # similarity threshold for gigpo
+    sim_thresh: 1.0 # similarity threshold for gigpo [0.0, 1.0]
   filter_groups: # DAPO from https://arxiv.org/abs/2503.14476
     enable: False
     max_num_gen_batches: 10

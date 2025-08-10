@@ -227,7 +227,7 @@ def build_step_group(anchor_obs: np.array, index: np.array, sim_thresh: float = 
     # Get unique indices
     unique_indices = np.unique(index)
 
-    group_size = []
+    group_size: List[int] = []
     # Process each unique index
     for idx in unique_indices:
         if sim_thresh == 1.0:
@@ -249,7 +249,7 @@ def build_step_group(anchor_obs: np.array, index: np.array, sim_thresh: float = 
                 group_size.append(len(original_indices))
                 for original_idx in original_indices:
                     step_group_uids[original_idx] = uid
-        else:
+        elif sim_thresh < 1.0 and sim_thresh >= 0.0:
             locs = np.where(index == idx)[0]
             obs_group = anchor_obs[locs]
 
@@ -274,7 +274,8 @@ def build_step_group(anchor_obs: np.array, index: np.array, sim_thresh: float = 
                 group_size.append(len(cluster["locs"]))
                 for loc in cluster["locs"]:
                     step_group_uids[loc] = uid
-
+        else:
+            raise ValueError(f"sim_thresh should be in [0, 1], but got {sim_thresh}")
         # Validate that all elements have been assigned a uid
     if None in step_group_uids or np.any(step_group_uids == None):
         missing_indices = np.where(step_group_uids == None)[0]

@@ -266,41 +266,57 @@ def process_image(image, max_pixels: int = 2048 * 2048, min_pixels: int = 256 * 
 
 
 def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
-    size_divisor_ref = config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node
+    use_adaptive_bs = config.actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size
+    ppo_mini_update_num = config.actor_rollout_ref.actor.ppo_mini_update_num
+
+    size_divisor_ref = config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node
     size_divisor_rollout = config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node
-    size_divisor_actor = config.actor_rollout_ref.actor.ppo_mini_batch_size
+    if use_adaptive_bs:
+        size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node * ppo_mini_update_num
+    else:
+        size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node
+        
     size_divisor = np.lcm.reduce(np.array([size_divisor_ref, size_divisor_rollout, size_divisor_actor])).item()
 
     # check if the batch size is divisible by the dp size, if not, delete the last few samples to make it divisible
     bs = len(data)
     remainder = bs % size_divisor
     if remainder == 0:
-        return data
-    
-    if mode == "delete":
-        # Generate indices to remove, rather than indices to keep
-        remove_indices = np.random.choice(bs, remainder, replace=False)
-        # Sort remove_indices to maintain stability when deleting
-        remove_indices = np.sort(remove_indices)
-        
-        # Create a boolean mask for elements to keep
-        keep_mask = np.ones(bs, dtype=bool)
-        keep_mask[remove_indices] = False
-
-        keep_mask_tensor = torch.tensor(keep_mask, dtype=torch.bool, device=data.batch['input_ids'].device)
-        # Apply the mask to keep elements in their original order
-        tensor_data = data.batch[keep_mask_tensor]
-        non_tensor_data = {key: val[keep_mask] for key, val in data.non_tensor_batch.items()}
-        adjusted_batch = DataProto(batch=tensor_data, non_tensor_batch=non_tensor_data, meta_info=data.meta_info)
-        del data
-    elif mode == "copy":
-        to_add = size_divisor - remainder
-        dup_indices = np.random.choice(bs, to_add, replace=False)
-        dup_proto = data.select_idxs(dup_indices)
-
-        adjusted_batch = DataProto.concat([data, dup_proto])
+        adjusted_batch = data
     else:
-        raise ValueError(f"Unsupported mode: {mode}")
+        if mode == "delete":
+            # Generate indices to remove, rather than indices to keep
+            remove_indices = np.random.choice(bs, remainder, replace=False)
+            # Sort remove_indices to maintain stability when deleting
+            remove_indices = np.sort(remove_indices)
+            
+            # Create a boolean mask for elements to keep
+            keep_mask = np.ones(bs, dtype=bool)
+            keep_mask[remove_indices] = False
+
+            keep_mask_tensor = torch.tensor(keep_mask, dtype=torch.bool, device=data.batch['input_ids'].device)
+            # Apply the mask to keep elements in their original order
+            tensor_data = data.batch[keep_mask_tensor]
+            non_tensor_data = {key: val[keep_mask] for key, val in data.non_tensor_batch.items()}
+            adjusted_batch = DataProto(batch=tensor_data, non_tensor_batch=non_tensor_data, meta_info=data.meta_info)
+            del data
+        elif mode == "copy":
+            to_add = size_divisor - remainder
+            dup_indices = np.random.choice(bs, to_add, replace=False)
+            dup_proto = data.select_idxs(dup_indices)
+
+            adjusted_batch = DataProto.concat([data, dup_proto])
+        else:
+            raise ValueError(f"Unsupported mode: {mode}")
+
+    if use_adaptive_bs:
+        adjusted_bs = len(adjusted_batch)
+        assert adjusted_bs % ppo_mini_update_num == 0, f"Adjusted batch size {adjusted_bs} is not divisible by update_num {ppo_mini_update_num}."
+        print(f"pre ppo_mini_batch_size: {config.actor_rollout_ref.actor.ppo_mini_batch_size}")
+        print(f"Adjusted batch size: {adjusted_bs}, update_num: {ppo_mini_update_num}")
+        config.actor_rollout_ref.actor.ppo_mini_batch_size = (adjusted_bs // ppo_mini_update_num)
+        print(f"post ppo_mini_batch_size: {config.actor_rollout_ref.actor.ppo_mini_batch_size}")
+        print(f"----------------------------------------------------------")
 
     return adjusted_batch
 

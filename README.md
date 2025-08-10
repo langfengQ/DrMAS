@@ -238,8 +238,10 @@ appworld download data
 
 ### 6. Search
 ```bash
+conda activate verl-agent
 cd ./agent_system/environments/env_package/search/third_party
 pip install -e .
+pip install gym==0.26.2
 ```
 
 Prepare dataset (data will be saved at `~/data/searchR1_processed_direct`):
