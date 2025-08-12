@@ -312,11 +312,8 @@ def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
     if use_adaptive_bs:
         adjusted_bs = len(adjusted_batch)
         assert adjusted_bs % ppo_mini_update_num == 0, f"Adjusted batch size {adjusted_bs} is not divisible by update_num {ppo_mini_update_num}."
-        print(f"pre ppo_mini_batch_size: {config.actor_rollout_ref.actor.ppo_mini_batch_size}")
-        print(f"Adjusted batch size: {adjusted_bs}, update_num: {ppo_mini_update_num}")
-        config.actor_rollout_ref.actor.ppo_mini_batch_size = (adjusted_bs // ppo_mini_update_num)
-        print(f"post ppo_mini_batch_size: {config.actor_rollout_ref.actor.ppo_mini_batch_size}")
-        print(f"----------------------------------------------------------")
+        adjusted_batch.meta_info["ppo_mini_batch_size"] = (adjusted_bs // ppo_mini_update_num)
+        assert adjusted_batch.meta_info["ppo_mini_batch_size"] > 0, "ppo_mini_batch_size must be greater than 0."
 
     return adjusted_batch
 

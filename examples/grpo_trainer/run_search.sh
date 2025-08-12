@@ -23,11 +23,11 @@ python3 -m verl.trainer.main_ppo \
     data.return_raw_chat=True \
     actor_rollout_ref.model.path=Qwen/Qwen2.5-3B \
     actor_rollout_ref.actor.optim.lr=1e-6 \
-    actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=0.15 \
+    actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=0.1 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=512 \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
-    actor_rollout_ref.actor.ppo_mini_update_num=4 \
+    actor_rollout_ref.actor.ppo_mini_update_num=8 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.001 \
@@ -55,7 +55,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='verl_agent_search' \
-    trainer.experiment_name='grpo_qwen2.5_3b_step4_warm0.15_upnum4' \
+    trainer.experiment_name='grpo_qwen2.5_3b_step4_warm0.1_upnum8' \
     trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.save_freq=50 \
