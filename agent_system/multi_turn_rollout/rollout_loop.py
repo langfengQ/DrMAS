@@ -7,6 +7,7 @@ import uuid
 from agent_system.multi_turn_rollout.utils import to_list_of_dict, torch_to_numpy, filter_group_data, preprocess_batch
 from agent_system.environments import EnvironmentManagerBase
 from typing import List, Dict, Any, Optional
+from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 
 class TrajectoryCollector:
     def __init__(self, config, tokenizer: PreTrainedTokenizer, processor=None):
@@ -105,18 +106,12 @@ class TrajectoryCollector:
             success (Dict[str, np.ndarray]): Success samples for each environment
             traj_uid (np.ndarray): Trajectory unique identifiers
         """
-        # Initial observations from the environment
-        obs, infos = envs.reset()
 
-        # Initialize trajectory collection
-        lenght_obs = len(obs['text']) if obs['text'] is not None else len(obs['image'])
-        if len(gen_batch.batch) != lenght_obs and self.config.env.rollout.n > 0:
-            gen_batch = gen_batch.repeat(repeat_times=self.config.env.rollout.n, interleave=True)
-        assert len(gen_batch.batch) == lenght_obs, f"gen_batch size {len(gen_batch.batch)} does not match obs size {lenght_obs}"
-
-        batch_size = len(gen_batch.batch['input_ids'])
-        batch_output = None
+        batch_size = len(gen_batch.batch)
         
+        # Initial observations from the environment
+        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.get('tools_kwargs', None))
+
         if self.config.env.rollout.n > 0: # env grouping
             uid_batch = []
             for i in range(batch_size):
@@ -159,7 +154,11 @@ class TrajectoryCollector:
 
             batch_input.meta_info = gen_batch.meta_info
 
-            batch_output = actor_rollout_wg.generate_sequences(batch_input)
+            # pad to be divisible by dp_size
+            batch_input_padded, pad_size = pad_dataproto_to_divisor(batch_input, actor_rollout_wg.world_size)
+            batch_output_padded = actor_rollout_wg.generate_sequences(batch_input_padded)
+            # # unpad
+            batch_output = unpad_dataproto(batch_output_padded, pad_size=pad_size)
 
             batch.non_tensor_batch['uid'] = uid_batch
             batch.non_tensor_batch['traj_uid'] = traj_uid
@@ -299,7 +298,9 @@ class TrajectoryCollector:
         Returns:
             DataProto: Final collected trajectory data with metadata.
         """
-        # Initial observations from the environment
+        if is_train:
+            gen_batch = gen_batch.repeat(repeat_times=self.config.env.rollout.n, interleave=True)
+
         if self.config.algorithm.filter_groups.enable and is_train:
             # Dynamic Sampling (for DAPO and Dynamic GiGPO)
             total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid = \
@@ -373,22 +374,17 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
             raise ValueError(f"Unknown executor_type '{executor_type}'.")
 
     # ------------------------------------------------------------------
-    def vanilla_multi_turn_loop(  # noqa: D401 – doc in base class
+    def vanilla_multi_turn_loop(
         self,
         gen_batch: DataProto,
         actor_rollout_wg,
         envs: EnvironmentManagerBase,
     ):
-        obs, infos = envs.reset()
 
-        # Initialize trajectory collection
-        lenght_obs = len(obs['text']) if obs['text'] is not None else len(obs['image'])
-        if len(gen_batch.batch) != lenght_obs and self.config.env.rollout.n > 0:
-            gen_batch = gen_batch.repeat(repeat_times=self.config.env.rollout.n, interleave=True)
-        assert len(gen_batch.batch) == lenght_obs, f"gen_batch size {len(gen_batch.batch)} does not match obs size {lenght_obs}"
+        batch_size = len(gen_batch.batch)
 
-        batch_size = len(gen_batch.batch['input_ids'])
-        batch_output = None
+        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.get('tools_kwargs', None))
+        self.multiagent_executor.reset()
         
         if self.config.env.rollout.n > 0: # env grouping
             uid_batch = []

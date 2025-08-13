@@ -35,7 +35,7 @@ You are a member of an expert multi-agent team operating in the WebShop e‑comm
 The team's overall task is: {task_description}.
 At each step, you and your teammates collaborate to decide the best next action.
 
-Your team is now at "step 1" and the current observation is: {current_observation}.
+Your team is now at "step {current_step}" and the current observation is: {current_observation}.
 The admissible actions in the current situation are: 
 [
 {available_actions}
@@ -50,7 +50,7 @@ You are a member of an expert multi-agent team operating in the WebShop e‑comm
 The team's overall task is: {task_description}
 At each step, you and your teammates collaborate to decide the best next action. 
 
-Prior to this step, your team has taken {step_count} environment step(s). Below is the history memory from "step 1" to "step {step_count}":
+Prior to this step, your team has taken {step_count} environment step(s). Below is the history memory:
 [
 {memory}
 ]

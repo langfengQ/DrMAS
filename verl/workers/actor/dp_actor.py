@@ -328,6 +328,11 @@ class DataParallelPPOActor(BasePPOActor):
         batch = data.select(batch_keys=select_keys).batch
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
 
+        if self.config.use_adaptive_ppo_mini_batch_size:
+            print(f"[update_policy] pre self.config.ppo_mini_batch_size: {self.config.ppo_mini_batch_size}")
+            self.config.ppo_mini_batch_size = data.meta_info.get("ppo_mini_batch_size", self.config.ppo_mini_batch_size)
+            print(f"[update_policy] post self.config.ppo_mini_batch_size: {self.config.ppo_mini_batch_size}")
+
         # Split to make minibatch iterator for updating the actor
         # See PPO paper for details. https://arxiv.org/abs/1707.06347
         if has_multi_modal_inputs:

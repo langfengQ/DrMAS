@@ -1,1 +1,1 @@
-from .memory import SimpleMemory
+from .memory import SimpleMemory, SearchMemory

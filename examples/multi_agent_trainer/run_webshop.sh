@@ -2,18 +2,25 @@ set -x
 ENGINE=${1:-vllm}
 export CUDA_VISIBLE_DEVICES=4,5
 
+multi_agent=True
+agent_list='["Reflexion Agent","Action Agent","Memory Agent"]'
+
 train_data_size=16
 val_data_size=128
 group_size=8
 
-multi_agent=True
-agent_list='["Action Agent","Memory Agent"]'
+algorithm=grpo
+gigpo_mode=mean_std_norm # "mean_norm" or "mean_std_norm"
+model=Qwen/Qwen3-4B-Instruct-2507
 
-algorithm=gigpo
-mode=mean_std_norm # "mean_norm" or "mean_std_norm"
-model=Qwen/Qwen2.5-3B
+if [ "$multi_agent" = "True" ]; then
+    agent_name_tag=$(echo "$agent_list" | jq -r '.[]' | sed 's/ Agent//g' | paste -sd+ -)
+else
+    agent_name_tag="Single"
+fi
 
-experiment_name="${algorithm}_$(basename $model)_${group_size}group_${mode}_ma_${multi_agent}_AM"
+experiment_name="${algorithm}_$(basename $model)_${group_size}group_${agent_name_tag}"
+
 
 # We only use data preparation to indicate the modality and the data size.
 python3 -m examples.data_preprocess.prepare \
@@ -30,15 +37,16 @@ python3 -m verl.trainer.main_ppo \
     data.max_prompt_length=5120 \
     data.max_response_length=512 \
     data.filter_overlong_prompts=True \
-    data.truncation='error' \
+    data.truncation='left' \
     data.return_raw_chat=True \
     actor_rollout_ref.model.path=$model \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=192 \
+    actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
+    actor_rollout_ref.actor.ppo_mini_update_num=10 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.01 \
+    actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
@@ -59,13 +67,14 @@ python3 -m verl.trainer.main_ppo \
     algorithm.use_kl_in_reward=False \
     algorithm.gamma=0.985 \
     algorithm.gigpo.step_advantage_w=1.0 \
-    algorithm.gigpo.mode=$mode \
+    algorithm.gigpo.mode=$gigpo_mode \
     env.env_name=Webshop \
     env.seed=0 \
     env.max_steps=15 \
     env.rollout.n=$group_size \
     agent.agent_list="$agent_list" \
     agent.multi_agent=$multi_agent \
+    agent.use_agent_memory=True \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='verl_multiagent_webshop' \
