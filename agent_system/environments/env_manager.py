@@ -97,6 +97,7 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
                 if self.config.agent.multi_agent:
                     obs = ALFWORLD_MULTIAGENT_TEMPLATE_NO_HIS.format(
                         task_description=self.tasks[i],
+                        current_step=len(self.memory[i]) + 1,
                         current_observation=text_obs[i],
                         admissible_actions=reformatted_admissible_actions
                     )
@@ -111,7 +112,7 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
                     obs = ALFWORLD_MULTIAGENT_TEMPLATE.format(
                         task_description=self.tasks[i],
                         step_count=len(self.memory[i]),
-                        memory="{memory}",
+                        memory="{memory}" if self.config.agent.use_agent_memory else memory_contexts[i],
                         current_step=len(self.memory[i]) + 1,
                         current_observation=text_obs[i],
                         admissible_actions=reformatted_admissible_actions
@@ -312,6 +313,7 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
     
     def reset(self, kwargs) -> Dict[str, Any]:
         obs, infos = self.envs.reset()
+        self.memory.reset(batch_size = len(infos))
         self.tasks = self.extract_task(obs)
         obs = self.format_obs(obs)
         # infos = [None] * self.envs.num_envs
@@ -320,7 +322,6 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                         'anchor': obs.copy()
                         }
         self.pre_text_obs = obs
-        self.memory.reset(batch_size = len(infos))
         return observations, infos
 
     def step(self, text_actions: List[str]):
@@ -409,6 +410,7 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                 if self.config.agent.multi_agent:
                     obs = WEBSHOP_MULTIAGENT_TEMPLATE_NO_HIS.format(
                         task_description=self.tasks[i],
+                        current_step=len(self.memory[i]) + 1,
                         current_observation=text_obs[i],
                         available_actions=reformatted_available_actions
                     )
@@ -426,7 +428,7 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                     obs = WEBSHOP_MULTIAGENT_TEMPLATE.format(
                         task_description=self.tasks[i],
                         step_count=len(self.memory[i]),
-                        memory="{memory}",
+                        memory="{memory}" if self.config.agent.use_agent_memory else memory_contexts[i],
                         current_step=len(self.memory[i]) + 1,
                         current_observation=text_obs[i],
                         available_actions=reformatted_available_actions

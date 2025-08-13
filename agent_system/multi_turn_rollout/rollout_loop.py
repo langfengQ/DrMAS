@@ -384,6 +384,7 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         batch_size = len(gen_batch.batch)
 
         obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.get('tools_kwargs', None))
+        self.multiagent_executor.reset()
         
         if self.config.env.rollout.n > 0: # env grouping
             uid_batch = []

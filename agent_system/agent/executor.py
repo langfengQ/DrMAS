@@ -3,7 +3,9 @@ from __future__ import annotations
 """
 from typing import List, Dict, Any, Optional, Tuple
 from transformers import PreTrainedTokenizer
-from agent_system.agent.agent import AgentRegistry, BaseAgent
+from agent_system.agent.base import BaseAgent
+from agent_system.agent.registry import AgentRegistry
+from agent_system.agent.agents import *
 from verl import DataProto
 
 
@@ -20,8 +22,8 @@ class BaseExecutor:
         self.config = config
         self.tokenizer = tokenizer
         self.processor = processor
-        if agent_list is None:
-            agent_list = ["Reflexion Agent", "Action Agent", "Memory Agent"]
+
+        assert agent_list is not None, "agent_list must be provided."
         
         self.agents: Dict[str, BaseAgent] = {
             name: AgentRegistry.create(name=name, 
@@ -38,6 +40,7 @@ class BaseExecutor:
     def reset(self):
         """Reset the executor, all agents, and buffer."""
         self.reset_buffer()
+        self.memory = None
         for ag in self.agents.values():
             ag.reset()
 
@@ -64,7 +67,6 @@ class BaseExecutor:
 
     def update_memory(self, text_repsonses: List[str]):
         """Update the memory of the agents with the latest text responses."""
-        assert "Memory Agent" in self.agent_list, "Memory Agent is required to update memory. Please add it to the agent_list list."
         if self.memory is None:
             self.memory = text_repsonses
         else:
@@ -111,7 +113,7 @@ class MultiAgentChainExecutor(BaseExecutor):
     """
     def __init__(
         self,
-        agent_list: Optional[List[str]] = ["Reflexion Agent", "Planning Agent", "Action Agent"],
+        agent_list: Optional[List[str]] = ["Reflexion Agent", "Action Agent", "Memory Agent"],
         tokenizer: PreTrainedTokenizer = None,
         processor=None,
         config: Any = None,
@@ -124,6 +126,9 @@ class MultiAgentChainExecutor(BaseExecutor):
         )
         if not self.agents:
             raise ValueError("ChainExecutor requires at least one agent.")
+
+        if self.config.agent.use_agent_memory and "Memory Agent" not in self.agent_list:
+            raise ValueError("Memory Agent is required to use agent memory. Please add it to the agent_list.")
         
         # The order of agents is the execution order.
         self.agent_order = self.agent_list
@@ -146,7 +151,7 @@ class MultiAgentChainExecutor(BaseExecutor):
 
             if name == "Action Agent":
                 text_actions = text_repsonses
-            if name == "Memory Agent":
+            if self.config.agent.use_agent_memory and name == "Memory Agent":
                 self.update_memory(text_repsonses)
 
         # if len(self.multiagent_batch_buffer) != len(self.agent_order):
@@ -192,5 +197,64 @@ class MultiAgentHierarchicalExecutor(BaseExecutor):
         # return action
         pass
 
+
+class SearchMultiAgentExecutor(BaseExecutor):
+    """Sequentially run agents, passing observation and batch through each agent.
+    This executor runs agents in a chain, where each agent processes the output
+    of the previous agent and passes its output to the next agent.
+    It is useful for scenarios where agents need to work in a sequence, such as
+    in a pipeline or a multi‑step process.
+    Args:
+        agent_list (List[str]): List of agent names to be executed in sequence.
+        tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
+        processor: Processor for handling data.
+        config (Any): Configuration object containing settings for the executor.
+    """
+    def __init__(
+        self,
+        agent_list: Optional[List[str]] = ["Planning Agent", "Action Agent", "Memory Agent"],
+        tokenizer: PreTrainedTokenizer = None,
+        processor=None,
+        config: Any = None,
+    ):
+        super().__init__(
+            agent_list=agent_list,
+            tokenizer=tokenizer,
+            processor=processor,
+            config=config,
+        )
+        if not self.agents:
+            raise ValueError("ChainExecutor requires at least one agent.")
+
+        if self.config.agent.use_agent_memory and "Memory Agent" not in self.agent_list:
+            raise ValueError("Memory Agent is required to use agent memory. Please add it to the agent_list.")
+        
+        # The order of agents is the execution order.
+        self.agent_order = self.agent_list
+        # if self.agent_order[-1] != "ActionAgent":
+        #     raise ValueError("The last agent must be ActionAgent.")
+
+    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wg, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
+        # clear and reset multiagent batch buffer
+        self.reset_buffer()
+        team_context, env_obs = self.initialize_context(env_obs)
+
+        # run agents sequentially, passing observation and batch
+        for name in self.agent_order:
+            batch, text_repsonses, team_context = self.agents[name].call(gen_batch=gen_batch, env_obs=env_obs, team_context=team_context, actor_rollout_wg=actor_rollout_wg, step=step)
+            if batch is None:
+                continue  # skip if the agent did not produce a batch
+
+            # save the batch to the multiagent buffer
+            self.save_to_buffer(name, batch)
+
+            if name == "Action Agent":
+                text_actions = text_repsonses
+            if self.config.agent.use_agent_memory and name == "Memory Agent":
+                self.update_memory(text_repsonses)
+
+        # if len(self.multiagent_batch_buffer) != len(self.agent_order):
+        #     raise Warning("Multiagent output batch buffer length does not match number of agents. This may lead to unexpected behavior.")
+        return text_actions, self.multiagent_batch_buffer
 
 __all__ = ["ChainExecutor", "HierarchicalExecutor"]

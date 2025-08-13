@@ -42,7 +42,7 @@ actor_rollout_ref:
   actor:
     strategy: fsdp  # [fsdp, fsdp2], This is for backward-compatibility
     use_adaptive_ppo_mini_batch_size: False
-    ppo_mini_update_num: 8
+    ppo_mini_update_num: 10
     ppo_mini_batch_size: 256
     ppo_micro_batch_size: null # will be deprecated, use ppo_micro_batch_size_per_gpu
     ppo_micro_batch_size_per_gpu: null
@@ -286,10 +286,11 @@ ray_init:
   num_cpus: null # `None` means using all CPUs, which might cause hang if limited in systems like SLURM. Please set to a number allowed then.
 
 
-agent:
+agent: # only for multi-agent training
   multi_agent: False # True for multi-agent training, False for single-agent training
   agent_list: ["Reflexion Agent", "Action Agent", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "Action Agent", "Memory Agent"]
   executor_type: chain
+  use_agent_memory: False
 
 
 env:

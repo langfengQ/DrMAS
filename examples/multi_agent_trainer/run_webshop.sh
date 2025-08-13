@@ -1,9 +1,9 @@
 set -x
 ENGINE=${1:-vllm}
-export CUDA_VISIBLE_DEVICES=2,3
+export CUDA_VISIBLE_DEVICES=4,5
 
 multi_agent=True
-agent_list='["Action Agent","Memory Agent"]'
+agent_list='["Reflexion Agent","Action Agent","Memory Agent"]'
 
 train_data_size=16
 val_data_size=128
@@ -11,23 +11,16 @@ group_size=8
 
 algorithm=grpo
 gigpo_mode=mean_std_norm # "mean_norm" or "mean_std_norm"
-model=Qwen/Qwen2.5-1.5B-Instruct
+model=Qwen/Qwen3-4B-Instruct-2507
 
 if [ "$multi_agent" = "True" ]; then
-    num_agents=$(echo "$agent_list" | jq length)
     agent_name_tag=$(echo "$agent_list" | jq -r '.[]' | sed 's/ Agent//g' | paste -sd+ -)
 else
-    num_agents=1
     agent_name_tag="Single"
 fi
 
-ppo_mini_batch_size=$((num_agents * 128)) # dynamically compute batch size to ensure the stable update times per interation
 experiment_name="${algorithm}_$(basename $model)_${group_size}group_${agent_name_tag}"
 
-echo "Agent List: $agent_list"
-echo "Number of Agents: $num_agents"
-echo "ppo_mini_batch_size: $ppo_mini_batch_size"
-echo "agent_name_tag: $agent_name_tag"
 
 # We only use data preparation to indicate the modality and the data size.
 python3 -m examples.data_preprocess.prepare \
@@ -44,12 +37,13 @@ python3 -m verl.trainer.main_ppo \
     data.max_prompt_length=5120 \
     data.max_response_length=512 \
     data.filter_overlong_prompts=True \
-    data.truncation='error' \
+    data.truncation='left' \
     data.return_raw_chat=True \
     actor_rollout_ref.model.path=$model \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=$ppo_mini_batch_size \
+    actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
+    actor_rollout_ref.actor.ppo_mini_update_num=10 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.001 \
@@ -80,6 +74,7 @@ python3 -m verl.trainer.main_ppo \
     env.rollout.n=$group_size \
     agent.agent_list="$agent_list" \
     agent.multi_agent=$multi_agent \
+    agent.use_agent_memory=True \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='verl_multiagent_webshop' \
