@@ -6,12 +6,13 @@ from agent_system.agent.registry import AgentRegistry
 from agent_system.agent.base import BaseAgent
 
 PROMPT = """
+# Task Introduction
 {env_prompt}
 
+# Your Teammates' Outputs
 {team_context}
 
--------
-
+# Your Role
 You are a "Planning Agent", and your role within your team is to formulate a high-level plan and identify the most appropriate strategic objective.
 
 Your responsibilities are strictly limited to:

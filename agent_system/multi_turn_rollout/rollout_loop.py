@@ -334,7 +334,7 @@ class TrajectoryCollector:
         return gen_batch_output
 
 
-from agent_system.agent import MultiAgentChainExecutor, MultiAgentHierarchicalExecutor, BaseExecutor 
+from agent_system.agent import *
 # =============================================================================
 # Multi‑Agent collector orchestrating a *team* of agents
 # =============================================================================
@@ -365,6 +365,13 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
             )
         elif executor_type == "hierarchy":
             self.multiagent_executor: BaseExecutor = MultiAgentHierarchicalExecutor(
+                agent_list=agent_list,
+                tokenizer=tokenizer,
+                processor=processor,
+                config=config,
+            )
+        elif executor_type == "search":
+            self.multiagent_executor: BaseExecutor = SearchMultiAgentExecutor(
                 agent_list=agent_list,
                 tokenizer=tokenizer,
                 processor=processor,

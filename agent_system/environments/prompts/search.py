@@ -17,8 +17,6 @@ You should first conduct reasoning process. This process MUST be enclosed within
 After completing your reasoning, choose only one of the following actions (do not perform both):
 (1) If you find you lack some knowledge, you can call a search engine to get more external information using format: <search> your query </search>.
 (2) If you have enough knowledge to answer the question confidently, provide your final answer within <answer> </answer> tags, without detailed illustrations. For example, <answer>Beijing</answer>.
-
-Your response should be in one of the following forms: "<think>...</think> <search>...</search>" or "<think>...</think> <answer>...</answer>".
 """
 
 SEARCH_TEMPLATE = """
@@ -33,8 +31,21 @@ You should first conduct reasoning process. This process MUST be enclosed within
 After completing your reasoning, choose only one of the following actions (do not perform both):
 (1) If you find you lack some knowledge, you can call a search engine to get more external information using format: <search> your query </search>.
 (2) If you have enough knowledge to answer the question confidently, provide your final answer within <answer> </answer> tags, without detailed illustrations. For example, <answer>Beijing</answer>.
+"""
 
-Your response should be in one of the following forms: "<think>...</think> <search>...</search>" or "<think>...</think> <answer>...</answer>".
+SEARCH_MULTIAGENT_TEMPLATE_NO_HIS = """
+You are a member of an expert multi-agent team tasked with answering the given question step-by-step.
+The team's question is: {task_description}
+Your team can access an external search engine to retrieve external information. At each step, you and your teammates must collaborate to make progress toward answering the question.
+"""
+
+SEARCH_MULTIAGENT_TEMPLATE = """
+You are a member of an expert multi-agent team tasked with answering the given question step-by-step.
+The team's question is: {task_description}
+Your team can access an external search engine to retrieve external information. At each step, you and your teammates must collaborate to make progress toward answering the question.
+
+Prior to this step, your team have already taken {step_count} step(s). Below is the interaction history where <search> </search> wrapped the past search queries and <information> </information> wrapped the corresponding search results returned by the external search engine. History:
+{memory_context}
 """
 
 

@@ -212,7 +212,7 @@ class SearchMultiAgentExecutor(BaseExecutor):
     """
     def __init__(
         self,
-        agent_list: Optional[List[str]] = ["Planning Agent", "Action Agent", "Memory Agent"],
+        agent_list: Optional[List[str]] = ["Search Agent", "Verify Agent"],
         tokenizer: PreTrainedTokenizer = None,
         processor=None,
         config: Any = None,
@@ -231,6 +231,9 @@ class SearchMultiAgentExecutor(BaseExecutor):
         
         # The order of agents is the execution order.
         self.agent_order = self.agent_list
+
+        self.output_agent = "Verify Agent" if "Verify Agent" in agent_list else "Search Agent"
+        print("Search output agent:", self.output_agent)
         # if self.agent_order[-1] != "ActionAgent":
         #     raise ValueError("The last agent must be ActionAgent.")
 
@@ -248,7 +251,7 @@ class SearchMultiAgentExecutor(BaseExecutor):
             # save the batch to the multiagent buffer
             self.save_to_buffer(name, batch)
 
-            if name == "Action Agent":
+            if name == self.output_agent:
                 text_actions = text_repsonses
             if self.config.agent.use_agent_memory and name == "Memory Agent":
                 self.update_memory(text_repsonses)
@@ -257,4 +260,8 @@ class SearchMultiAgentExecutor(BaseExecutor):
         #     raise Warning("Multiagent output batch buffer length does not match number of agents. This may lead to unexpected behavior.")
         return text_actions, self.multiagent_batch_buffer
 
-__all__ = ["ChainExecutor", "HierarchicalExecutor"]
+__all__ = [
+    "MultiAgentChainExecutor", 
+    "MultiAgentHierarchicalExecutor", 
+    "SearchMultiAgentExecutor",
+    ]

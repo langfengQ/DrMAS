@@ -51,9 +51,9 @@ class BaseAgent:
         """Update the observation dictionary with the text response."""
         # Naive append of the latest responses to observations
         for i in range(len(team_context)):
-            if team_context[i] == "": 
-                team_context[i] = "Some of your teammates have already shared their thoughts for the current step. Their outputs are as follows:\n"
-            team_context[i] = team_context[i] + f"\n{self.name}:\n{text_response[i]}\n"
+            # if team_context[i] == "": 
+            #     team_context[i] = "## Your Teammates' Outputs\n"
+            team_context[i] = team_context[i] + f"""\nThe output of "{self.name}": {text_response[i]}\n"""
         return team_context
 
     def _generate_with_llm(self, batch: DataProto, actor_rollout_wg, meta_info) -> Tuple[DataProto, List[str]]:

@@ -9,6 +9,23 @@ from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 import re
 import numpy as np
 
+# PROMPT = """
+# # Task Introduction
+# {env_prompt}
+
+# # Your Teammates' Outputs at Step {step}
+# {team_context}
+
+# # Your Role
+# You are a "Verifier", responsible for determining whether the anwser of the "Search Agent" is correct for the given question. 
+
+# Typically, "Search Agent" output is <answer>A</answer>. Your should verify the anwser based on your own prior knowledge, all relevant past queries, and all contents provided within <information> blocks.  
+# If fully supported and precise, approve by restating the same answer of "Search Agent" via <answer>A</answer>. If issues exist, you may either directly provide a corrected answer via <answer>refined answer</answer>, or call an external search engine to gather missing information using <search>your query</search>. 
+
+# You should first conduct a reasoning process to evaluate the anwser's correctness of "Search Agent" at step {step}. This process MUST be enclosed within <think> </think> tags.
+# Once you've finished your reasoning, present your response. Your response should be in one of the following forms: "<think>...</think> <answer>...</answer>" or "<think>...</think> <search>...</search>".
+# """
+
 PROMPT = """
 # Task Introduction
 {env_prompt}
@@ -17,18 +34,20 @@ PROMPT = """
 {team_context}
 
 # Your Role
-You are a "Search Agent", and your primary responsibility is to decide whether to call an external search tool or to provide a direct answer of the question.
+You are a "Verifier", responsible for determining whether the output of the "Search Agent" is reasonable or correct based on your own prior knowledge, all relevant past queries, and all contents provided within <information> blocks.
 
-You should first conduct a reasoning process. This process MUST be enclosed within <think> </think> tags.
-After completing your reasoning, choose only one of the following actions (do not perform both):
-(1) If you find you lack some knowledge, you can call a search engine to get more external information using format: <search> your query </search>.
-(2) If you have enough knowledge to answer the question confidently, provide your final answer within <answer> </answer> tags, without detailed illustrations. For example, <answer>Beijing</answer>.
+You should follow the logic below.
+(1) If the latest "Search Agent" output is <search>Q</search>: Determine whether the query Q is reasonable for the given question. If the query Q is already strong, keep it via <answer>Q</answer>; otherwise refine it via <search>your refined query</search>.
+(2) If the latest "Search Agent" output is <answer>A</answer>: Determine whether the anwser A is correct for the given question. If fully supported and precise, approve by restating the same answer of "Search Agent" via <answer>A</answer>. If issues exist, you may either directly provide a corrected concise answer via <answer>your refined answer</answer>, or call an external search engine to gather missing information using <search>your query</search>.
+
+You should first conduct a reasoning process to evaluate the output's reasonableness and correctness of "Search Agent" at step {step}. This process MUST be enclosed within <think> </think> tags.
+Once you've finished your reasoning, present your response based on above logic.
 """
 
-@AgentRegistry.register("Search Agent")
-class SearchAgent(BaseAgent):
+@AgentRegistry.register("Verify Agent")
+class VerifyAgent(BaseAgent):
     def __init__(self, tokenizer: PreTrainedTokenizer, processor, config: Any):
-        super().__init__("Search Agent", PROMPT, tokenizer=tokenizer, processor=processor, config=config)
+        super().__init__("Verify Agent", PROMPT, tokenizer=tokenizer, processor=processor, config=config)
     
     def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
@@ -44,6 +63,7 @@ class SearchAgent(BaseAgent):
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context
     
+
     def _generate_with_llm(self, batch: DataProto, actor_rollout_wg, meta_info) -> Tuple[DataProto, List[str]]:
         """Helper: prompt → input_ids → actor_rollout_wg → decoded str."""
         batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
@@ -74,7 +94,6 @@ class SearchAgent(BaseAgent):
         batch.non_tensor_batch['is_action_valid'] = valids
 
         return batch, text_repsonses
-
 
 
 def _postprocess_action(action: str) -> str:
@@ -130,7 +149,7 @@ def search_projection(actions: List[str]) -> Tuple[List[str], List[int]]:
             if m:
                 results.append(f"<answer>{m.group(1).strip()}</answer>")
             else:
-                results.append("<answer> </answer>")
+                results.append("")
                 valids[i] = 0
 
         # --- Validity checks -------------------------------------------------
@@ -146,5 +165,5 @@ def search_projection(actions: List[str]) -> Tuple[List[str], List[int]]:
             valids[i] = 0
 
     valids = np.array(valids, dtype=bool)
-
+    
     return results, valids

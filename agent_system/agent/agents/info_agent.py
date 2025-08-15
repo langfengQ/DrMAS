@@ -1,3 +1,4 @@
+
 from typing import Dict, Any, Callable, Optional, List, Tuple
 from verl import DataProto
 from transformers import PreTrainedTokenizer
@@ -13,23 +14,19 @@ PROMPT = """
 {team_context}
 
 # Your Role
-You are an "Action Agent", and your role within your team is to determine the final action for the current step.
+You are a "Search Agent", and your primary responsibility is to that transforms long raw search results into concise, de-noised key facts with citations.
 
-You are now at step {step}. Based on all information above, please decide on the most appropriate admissible action.
-You should first reason step-by-step about the current situation. This reasoning process MUST be enclosed within <think> </think> tags.
-Once you've finished your reasoning, select one admissible action and MUST present it enclosed within {start_tag} {end_tag} tags.
+
+Once you've finished your reasoning, write the final search query inside {start_tag} {end_tag} tags. Ensure your query is precise, information-rich, avoids vagueness, and maximizes the likelihood of retrieving valuable, directly relevant information rather than repeating what is already known.
 """
 
-@AgentRegistry.register("Action Agent")
-class ActionAgent(BaseAgent):
+@AgentRegistry.register("Information Integrator")
+class InformationIntegratorAgent(BaseAgent):
     def __init__(self, tokenizer: PreTrainedTokenizer, processor, config: Any):
-        super().__init__("Action Agent", PROMPT, tokenizer=tokenizer, processor=processor,config=config)
-        self.start_tag = "<action>"
-        self.end_tag = "</action>"
+        super().__init__("Information Integrator", PROMPT, tokenizer=tokenizer, processor=processor, config=config)
+        self.start_tag = "<search>"
+        self.end_tag = "</search>"
     
-    def projection(self, text_repsonses: List[str]) -> List[str]:
-        return [response.strip() for response in text_repsonses]
-
     def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
         obs = self.build_prompt(env_obs, team_context, step)
@@ -43,3 +40,4 @@ class ActionAgent(BaseAgent):
 
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context
+    

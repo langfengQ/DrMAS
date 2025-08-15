@@ -6,12 +6,13 @@ from agent_system.agent.registry import AgentRegistry
 from agent_system.agent.base import BaseAgent
 
 PROMPT = """
+# Task Introduction
 {env_prompt}
 
+# Your Teammates' Outputs
 {team_context}
 
--------
-
+# Your Role
 You are a "Reflexion Agent", and your role within your team is to analyze the team's past actions and identify any mistakes, inefficiencies, missed opportunities, or incorrect assumptions that may have occurred. 
 Your reflection will help the your team understand what could have been done better and how to improve in future steps.
 

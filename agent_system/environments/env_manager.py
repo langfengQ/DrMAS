@@ -616,15 +616,27 @@ class SearchEnvironmentManager(EnvironmentManagerBase):
 
         for i in range(len(text_obs)):
             if init or self.config.env.history_length <= 0:
-                obs_i = SEARCH_TEMPLATE_NO_HIS.format(
-                    task_description=self.tasks[i]
-                )
+                if self.config.agent.multi_agent:
+                    obs_i = SEARCH_MULTIAGENT_TEMPLATE_NO_HIS.format(
+                        task_description=self.tasks[i]
+                    )
+                else:
+                    obs_i = SEARCH_TEMPLATE_NO_HIS.format(
+                        task_description=self.tasks[i]
+                    )
             else:
-                obs_i = SEARCH_TEMPLATE.format(
-                    task_description=self.tasks[i],
-                    memory_context=memory_ctx[i],
-                    step_count=len(self.memory[i]),
-                )
+                if self.config.agent.multi_agent:
+                    obs_i = SEARCH_MULTIAGENT_TEMPLATE.format(
+                        task_description=self.tasks[i],
+                        memory_context="{memory}" if self.config.agent.use_agent_memory else memory_ctx[i],
+                        step_count=len(self.memory[i]),
+                    )
+                else:
+                    obs_i = SEARCH_TEMPLATE.format(
+                        task_description=self.tasks[i],
+                        memory_context=memory_ctx[i],
+                        step_count=len(self.memory[i]),
+                    )
             postprocess_text_obs.append(obs_i)
 
         return postprocess_text_obs

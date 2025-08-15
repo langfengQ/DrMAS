@@ -6,12 +6,13 @@ from agent_system.agent.registry import AgentRegistry
 from agent_system.agent.base import BaseAgent
 
 PROMPT = """
+# Task Introduction
 {env_prompt}
 
+# Your Teammates' Outputs
 {team_context}
 
--------
-
+# Your Role
 You are a "Memory Agent", and your role within your team is to maintain a complete memory for all important history details.
 
 Your responsibilities:
