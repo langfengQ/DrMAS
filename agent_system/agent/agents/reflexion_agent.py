@@ -33,7 +33,7 @@ class ReflexionAgent(BaseAgent):
 
     def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
-        if step == 0:
+        if step == 1:
             return None, None, team_context
         
         obs = self.build_prompt(env_obs, team_context, step)
