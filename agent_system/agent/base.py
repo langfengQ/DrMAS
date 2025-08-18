@@ -7,7 +7,6 @@ import copy
 from verl import DataProto
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from transformers import PreTrainedTokenizer
-from agent_system.agent.utils import tag_projection
 
 class BaseAgent:
     """Abstract agent.  All subclasses *must* implement :py:meth:`act`."""
@@ -82,9 +81,6 @@ class BaseAgent:
         batch = batch.union(batch_output)
         
         text_repsonses = self.tokenizer.batch_decode(batch.batch['responses'], skip_special_tokens=True)
-
-        text_repsonses, valids = tag_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
-        batch.non_tensor_batch['is_action_valid'] = valids
 
         return batch, text_repsonses
 

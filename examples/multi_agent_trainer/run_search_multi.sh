@@ -1,10 +1,10 @@
 set -x
 ENGINE=${1:-vllm}
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=2,3,4,5
 
 multi_agent=True
-agent_list='["Search Agent"]'
-# agent_list='["Reflexion Agent", "Search Agent"]'
+# agent_list='["Search Agent"]'
+agent_list='["Reflexion Agent", "Search Agent"]'
 # agent_list='["Reflexion Agent", "Search Agent", "Verify Agent"]'
 executor_type=search
 use_agent_memory=False
@@ -89,7 +89,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='multiagent_search' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=2 \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
     trainer.save_freq=50 \
     trainer.test_freq=150 \

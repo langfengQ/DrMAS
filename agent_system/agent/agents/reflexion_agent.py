@@ -4,31 +4,30 @@ from transformers import PreTrainedTokenizer
 from agent_system.multi_turn_rollout.utils import preprocess_batch
 from agent_system.agent.registry import AgentRegistry
 from agent_system.agent.base import BaseAgent
+from agent_system.agent.utils import general_projection
 
 PROMPT = """
 # Task Introduction
 {env_prompt}
 
-# Your Teammates' Outputs
 {team_context}
 
 # Your Role
-You are a "Reflexion Agent", and your role within your team is to analyze the team's past actions and identify any mistakes, inefficiencies, missed opportunities, or incorrect assumptions that may have occurred. 
-Your reflection will help the your team understand what could have been done better and how to improve in future steps.
+You are a "Reflexion Agent", and your role within your team is to analyze the team's past search queries and identify any mistakes, inefficiencies, missed opportunities, or incorrect assumptions that may have occurred. Your reflection will help the your team understand what could have been done better and how to improve in future steps.
 
-Your responsibilities are strictly limited to:
-- Review past actions, decisions, and outcomes.
+Your responsibilities:
+- Review past search queries and external information.
 - Identify mistakes, missed opportunities, inefficiencies, or false assumptions. 
 - Suggest improvements that could guide better decisions in the future.
 
-You are now at step {step}. Based on all information above, you should first reason step-by-step about the past events. This reasoning process MUST be enclosed within <think> </think> tags.  
+You are now at step {step}. You should first reason step-by-step about the past events. This reasoning process MUST be enclosed within <think> </think> tags.  
 Once you've finished your reasoning, provide a clear and insightful reflection enclosed within {start_tag} {end_tag} tags.
 """
 
 @AgentRegistry.register("Reflexion Agent")
 class ReflexionAgent(BaseAgent):
     def __init__(self, tokenizer: PreTrainedTokenizer, processor,config: Any):
-        super().__init__("Reflexion Agent", PROMPT, tokenizer=tokenizer, processor=processor,config=config)
+        super().__init__("Reflexion Agent", PROMPT, tokenizer=tokenizer, processor=processor, config=config)
         self.start_tag = "<reflexion>"
         self.end_tag = "</reflexion>"
 
@@ -45,6 +44,8 @@ class ReflexionAgent(BaseAgent):
                                     processor=self.processor,
                                     )
         batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, gen_batch.meta_info)
+        text_repsonses, valids = general_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag, check_think_tag=False)
+        batch.non_tensor_batch['is_action_valid'] = valids
 
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context

@@ -269,12 +269,14 @@ def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
     use_adaptive_bs = config.actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size
     ppo_mini_update_num = config.actor_rollout_ref.actor.ppo_mini_update_num
 
-    size_divisor_ref = config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node
-    size_divisor_rollout = config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node
+    world_size = config.trainer.n_gpus_per_node * config.trainer.nnodes
+
+    size_divisor_ref = config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu * world_size
+    size_divisor_rollout = config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu * world_size
     if use_adaptive_bs:
-        size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node * ppo_mini_update_num
+        size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * world_size * ppo_mini_update_num
     else:
-        size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node
+        size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * world_size
         
     size_divisor = np.lcm.reduce(np.array([size_divisor_ref, size_divisor_rollout, size_divisor_actor])).item()
 
@@ -311,8 +313,10 @@ def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
 
     if use_adaptive_bs:
         adjusted_bs = len(adjusted_batch)
-        assert adjusted_bs % ppo_mini_update_num == 0, f"Adjusted batch size {adjusted_bs} is not divisible by update_num {ppo_mini_update_num}."
-        adjusted_batch.meta_info["ppo_mini_batch_size"] = (adjusted_bs // ppo_mini_update_num)
+        ulysses_sequence_parallel_size = config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1)
+        assert config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1) == config.critic.get("ulysses_sequence_parallel_size", 1)
+        assert adjusted_bs % ppo_mini_update_num == 0, f"Adjusted batch size {adjusted_bs} is not divisible by (update_num*node_num//ulysses_sequence_parallel_size) {ppo_mini_update_num*world_size//ulysses_sequence_parallel_size}."
+        adjusted_batch.meta_info["ppo_mini_batch_size"] = (adjusted_bs // (ppo_mini_update_num*world_size//ulysses_sequence_parallel_size))
         assert adjusted_batch.meta_info["ppo_mini_batch_size"] > 0, "ppo_mini_batch_size must be greater than 0."
 
     return adjusted_batch

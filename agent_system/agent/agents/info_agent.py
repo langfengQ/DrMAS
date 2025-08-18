@@ -5,6 +5,7 @@ from transformers import PreTrainedTokenizer
 from agent_system.multi_turn_rollout.utils import preprocess_batch
 from agent_system.agent.registry import AgentRegistry
 from agent_system.agent.base import BaseAgent
+from agent_system.agent.utils import general_projection
 
 PROMPT = """
 # Task Introduction
@@ -37,7 +38,9 @@ class InformationIntegratorAgent(BaseAgent):
                                     processor=self.processor,
                                     )
         batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, gen_batch.meta_info)
-
+        text_repsonses, valids = general_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag)
+        batch.non_tensor_batch['is_action_valid'] = valids
+        
         team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses, team_context
     
