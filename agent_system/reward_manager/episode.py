@@ -20,8 +20,8 @@ class EpisodeRewardManager:
     """The reward manager.
     """
 
-    def __init__(self, tokenizer, num_examine, normalize_by_length=False) -> None:
-        self.tokenizer = tokenizer
+    def __init__(self, tokenizers, num_examine, normalize_by_length=False) -> None:
+        self.tokenizers = tokenizers
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.normalize_by_length = normalize_by_length
 
@@ -53,9 +53,11 @@ class EpisodeRewardManager:
             valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
             valid_response_ids = response_ids[:valid_response_length]
 
+            model_id = data_item.non_tensor_batch['model_id']
+            agent_id = data_item.non_tensor_batch['agent']
             # decode
-            prompt_str = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=False)
-            response_str = self.tokenizer.decode(valid_response_ids, skip_special_tokens=False)
+            prompt_str = self.tokenizers[model_id].decode(valid_prompt_ids, skip_special_tokens=False)
+            response_str = self.tokenizers[model_id].decode(valid_response_ids, skip_special_tokens=False)
 
             # ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
 
@@ -80,10 +82,10 @@ class EpisodeRewardManager:
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
 
-            if already_print_data_sources[data_source] < self.num_examine:
+            if already_print_data_sources[data_source] < self.num_examine and np.random.random() < 0.1:
                 already_print_data_sources[data_source] += 1
-                print("[prompt]", prompt_str)
-                print("[response]", response_str)
+                print(f"[{agent_id}][prompt]", prompt_str)
+                print(f"[{agent_id}][response]", response_str)
                 print("[score]", score)
 
         if return_dict:

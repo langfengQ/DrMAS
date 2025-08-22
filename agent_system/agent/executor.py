@@ -14,26 +14,26 @@ class BaseExecutor:
 
     def __init__(
         self,
-        agent_list: List[str],
-        tokenizer: PreTrainedTokenizer,
-        processor,
+        agent_ids: List[str],
+        agent_models: List[str],
+        tokenizers: Dict[str, PreTrainedTokenizer],
+        processors: Dict[str, Any],
         config: Any,
     ):
         self.config = config
-        self.tokenizer = tokenizer
-        self.processor = processor
+        self.tokenizers = tokenizers
+        self.processors = processors
 
-        assert agent_list is not None, "agent_list must be provided."
-        
         self.agents: Dict[str, BaseAgent] = {
             name: AgentRegistry.create(name=name, 
-                                       tokenizer=tokenizer,
-                                       processor=processor,
+                                       tokenizer=tokenizers[model],
+                                       processor=processors[model],
                                        config=config,
                                        )
-            for name in agent_list
+            for name, model in zip(agent_ids, agent_models)
         }
-        self.agent_list = agent_list
+        self.agent_ids = agent_ids
+        self.agent_models = agent_models
         self.multiagent_batch_buffer: List[Dict] = []  # Buffer to store multiagent output batches
         self.memory = None
 
@@ -77,7 +77,7 @@ class BaseExecutor:
         self,
         gen_batch: DataProto,
         env_obs: Dict[str, Any],
-        actor_rollout_wg,
+        actor_rollout_wgs,
         step: int,
     ) -> Tuple[List[str], Dict[str, DataProto]]:
         """Run the executor with the given batch and environment observations.
@@ -87,7 +87,7 @@ class BaseExecutor:
                 - 'text' (List[str]): Text observation data
                 - 'image' (np.ndarray or torch.Tensor): Image observation data
                 - 'anchor' (None or Any): Anchor observation without any histories or additional info. (for GiGPO only).
-            actor_rollout_wg: The shared LLM policy for acting.
+            actor_rollout_wgs: The LLM policies for acting.
             step: Environment step
         Returns:
             Tuple[List[str], Dict[str, DataProto]]: A tuple containing the text actions
@@ -106,43 +106,50 @@ class MultiAgentChainExecutor(BaseExecutor):
     It is useful for scenarios where agents need to work in a sequence, such as
     in a pipeline or a multi‑step process.
     Args:
-        agent_list (List[str]): List of agent names to be executed in sequence.
+        agent_ids (List[str]): List of agent names to be executed in sequence.
         tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
         processor: Processor for handling data.
         config (Any): Configuration object containing settings for the executor.
     """
     def __init__(
         self,
-        agent_list: Optional[List[str]] = ["Reflexion Agent", "Action Agent", "Memory Agent"],
-        tokenizer: PreTrainedTokenizer = None,
-        processor=None,
+        agent_ids: List[str],
+        agent_models: List[str],
+        tokenizers: Dict[str, PreTrainedTokenizer] = None,
+        processors: Dict[str, Any] = None,
         config: Any = None,
     ):
         super().__init__(
-            agent_list=agent_list,
-            tokenizer=tokenizer,
-            processor=processor,
+            agent_ids=agent_ids,
+            agent_models=agent_models,
+            tokenizers=tokenizers,
+            processors=processors,
             config=config,
         )
         if not self.agents:
             raise ValueError("ChainExecutor requires at least one agent.")
 
-        if self.config.agent.use_agent_memory and "Memory Agent" not in self.agent_list:
-            raise ValueError("Memory Agent is required to use agent memory. Please add it to the agent_list.")
+        if self.config.agent.use_agent_memory and "Memory Agent" not in self.agent_ids:
+            raise ValueError("Memory Agent is required to use agent memory. Please add it to the agent_ids.")
         
         # The order of agents is the execution order.
-        self.agent_order = self.agent_list
+        self.agent_order = self.agent_ids
         # if self.agent_order[-1] != "ActionAgent":
         #     raise ValueError("The last agent must be ActionAgent.")
 
-    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wg, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
+    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
         # clear and reset multiagent batch buffer
         self.reset_buffer()
         team_context, env_obs = self.initialize_context(env_obs)
 
         # run agents sequentially, passing observation and batch
         for name in self.agent_order:
-            batch, text_repsonses, team_context = self.agents[name].call(gen_batch=gen_batch, env_obs=env_obs, team_context=team_context, actor_rollout_wg=actor_rollout_wg, step=step)
+            actor_rollout_wg = actor_rollout_wgs[self.agents[name].model_id]
+            batch, text_repsonses, team_context = self.agents[name].call(gen_batch=gen_batch, 
+                                                                         env_obs=env_obs, 
+                                                                         team_context=team_context, 
+                                                                         actor_rollout_wg=actor_rollout_wg, 
+                                                                         step=step)
             if batch is None:
                 continue  # skip if the agent did not produce a batch
 
@@ -174,12 +181,12 @@ class MultiAgentHierarchicalExecutor(BaseExecutor):
             raise ValueError("Hierarchy requires ≥2 agents (planner + actor).")
         self.planner = self.agents[0]
         self.actor_chain = ChainExecutor(  # reuse chain for lower level
-            agent_list=[ag.name for ag in self.agents[1:]],
-            tokenizer=self.tokenizer,
+            agent_ids=[ag.name for ag in self.agents[1:]],
+            tokenizers=self.tokenizers,
             config=self.config,
         )
 
-    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wg, step: int) -> str:  # noqa: D401 – override
+    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, step: int) -> str:  # noqa: D401 – override
         # self.actor_chain.reset()
         # # 1) high‑level plan ---------------------------------------------
         # plan = self.planner.call(
@@ -197,6 +204,7 @@ class MultiAgentHierarchicalExecutor(BaseExecutor):
         # return action
         pass
 
+import time
 
 class SearchMultiAgentExecutor(BaseExecutor):
     """Sequentially run agents, passing observation and batch through each agent.
@@ -205,46 +213,54 @@ class SearchMultiAgentExecutor(BaseExecutor):
     It is useful for scenarios where agents need to work in a sequence, such as
     in a pipeline or a multi‑step process.
     Args:
-        agent_list (List[str]): List of agent names to be executed in sequence.
+        agent_ids (List[str]): List of agent names to be executed in sequence.
         tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
         processor: Processor for handling data.
         config (Any): Configuration object containing settings for the executor.
     """
     def __init__(
         self,
-        agent_list: Optional[List[str]] = ["Search Agent", "Verify Agent"],
-        tokenizer: PreTrainedTokenizer = None,
-        processor=None,
+        agent_ids: List[str],
+        agent_models: List[str],
+        tokenizers: Dict[str, PreTrainedTokenizer] = None,
+        processors: Dict[str, Any] = None,
         config: Any = None,
     ):
         super().__init__(
-            agent_list=agent_list,
-            tokenizer=tokenizer,
-            processor=processor,
+            agent_ids=agent_ids,
+            agent_models=agent_models,
+            tokenizers=tokenizers,
+            processors=processors,
             config=config,
         )
         if not self.agents:
             raise ValueError("ChainExecutor requires at least one agent.")
 
-        if self.config.agent.use_agent_memory and "Memory Agent" not in self.agent_list:
-            raise ValueError("Memory Agent is required to use agent memory. Please add it to the agent_list.")
+        if self.config.agent.use_agent_memory and "Memory Agent" not in self.agent_ids:
+            raise ValueError("Memory Agent is required to use agent memory. Please add it to the agent_ids.")
         
         # The order of agents is the execution order.
-        self.agent_order = self.agent_list
+        self.agent_order = self.agent_ids
 
-        self.output_agent = "Verify Agent" if "Verify Agent" in agent_list else "Search Agent"
+        self.output_agent = "Verify Agent" if "Verify Agent" in agent_ids else "Search Agent"
         print("Search output agent:", self.output_agent)
         # if self.agent_order[-1] != "ActionAgent":
         #     raise ValueError("The last agent must be ActionAgent.")
 
-    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wg, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
+    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
         # clear and reset multiagent batch buffer
         self.reset_buffer()
         team_context, env_obs = self.initialize_context(env_obs)
 
         # run agents sequentially, passing observation and batch
         for name in self.agent_order:
-            batch, text_repsonses, team_context = self.agents[name].call(gen_batch=gen_batch, env_obs=env_obs, team_context=team_context, actor_rollout_wg=actor_rollout_wg, step=step)
+            time_start = time.time()
+            actor_rollout_wg = actor_rollout_wgs[self.agents[name].model_id]
+            batch, text_repsonses, team_context = self.agents[name].call(gen_batch=gen_batch, 
+                                                                         env_obs=env_obs, 
+                                                                         team_context=team_context, 
+                                                                         actor_rollout_wg=actor_rollout_wg, 
+                                                                         step=step)
             if batch is None:
                 continue  # skip if the agent did not produce a batch
 
@@ -255,6 +271,9 @@ class SearchMultiAgentExecutor(BaseExecutor):
                 text_actions = text_repsonses
             if self.config.agent.use_agent_memory and name == "Memory Agent":
                 self.update_memory(text_repsonses)
+
+            time_end = time.time()
+            print(f"Agent {name} processed in {time_end - time_start:.2f} seconds.")
 
         # if len(self.multiagent_batch_buffer) != len(self.agent_order):
         #     raise Warning("Multiagent output batch buffer length does not match number of agents. This may lead to unexpected behavior.")

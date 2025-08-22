@@ -32,14 +32,14 @@ PROMPT = """
 {team_context}
 
 # Your Role
-You are a "Verifier", responsible for determining whether the output of the "Search Agent" is reasonable or correct based on your own prior knowledge, all relevant past queries, and all contents provided within <information> blocks.
+You are a "Verify Agent". Your job is to evaluate whether the output of "Search Agent" at step {step} is correct and reasonable. Base your verification on your own prior knowledge, all past search queries (<search>...</search>), and all retrieved information (<information>...</information>).
 
 You should follow the logic below.
-(1) If the latest "Search Agent" output is <search>Q</search>: Determine whether the query Q is reasonable for the given question. If the query Q is already strong, keep it via <answer>Q</answer>; otherwise refine it via <search>your refined query</search>.
-(2) If the latest "Search Agent" output is <answer>A</answer>: Determine whether the anwser A is correct for the given question. If fully supported and precise, approve by restating the same answer of "Search Agent" via <answer>A</answer>. If issues exist, you may either directly provide a corrected concise answer via <answer>your refined answer</answer>, or call an external search engine to gather missing information using <search>your query</search>.
+(1) If the "Search Agent" output is <search>Q</search>: Check if the query Q is reasonable for the given question. If the query Q is already strong, keep it via <answer>Q</answer>; otherwise refine it via <search>your refined query</search>.
+(2) If the "Search Agent" output is <answer>A</answer>: Check if the anwser A is fully supported and precise for the given question. If correct, approve it by restating the same answer via <answer>A</answer>. If incorrect or incomplete, you can either directly provide a corrected concise answer via <answer>your refined answer</answer>, or call an external search engine to gather missing information using <search>your query</search>.
 
-You should first conduct a reasoning process to evaluate the output's reasonableness and correctness of "Search Agent" at step {step}. This process MUST be enclosed within <think> </think> tags.
-Once you've finished your reasoning, present your response based on above logic.
+You should first conduct a reasoning process. This process MUST be enclosed within <think> </think> tags.
+Once you've finished your reasoning, present your response based on above logic. Your response should be in one of the following forms: "<think>...</think> <answer>...</answer>" or "<think>...</think> <search>...</search>".
 """
 
 @AgentRegistry.register("Verify Agent")

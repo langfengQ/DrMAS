@@ -3,7 +3,7 @@ ENGINE=${1:-vllm}
 export CUDA_VISIBLE_DEVICES=4,5
 
 multi_agent=True
-agent_list='["Reflexion Agent","Action Agent","Memory Agent"]'
+agent_ids='["Reflexion Agent","Action Agent","Memory Agent"]'
 executor_type=chain
 
 train_data_size=16
@@ -15,7 +15,7 @@ gigpo_mode=mean_std_norm # "mean_norm" or "mean_std_norm"
 model=Qwen/Qwen2.5-3B-Instruct
 
 if [ "$multi_agent" = "True" ]; then
-    agent_name_tag=$(echo "$agent_list" | jq -r '.[]' | sed 's/ Agent//g' | paste -sd+ -)
+    agent_name_tag=$(echo "$agent_ids" | jq -r '.[]' | sed 's/ Agent//g' | paste -sd+ -)
 else
     agent_name_tag="Single"
 fi
@@ -74,7 +74,7 @@ python3 -m verl.trainer.main_ppo \
     env.max_steps=15 \
     env.rollout.n=$group_size \
     agent.multi_agent=$multi_agent \
-    agent.agent_list="$agent_list" \
+    agent.agent_ids="$agent_ids" \
     agent.executor_type=$executor_type \
     agent.use_agent_memory=True \
     trainer.critic_warmup=0 \

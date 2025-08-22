@@ -7,6 +7,7 @@ import copy
 from verl import DataProto
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from transformers import PreTrainedTokenizer
+import numpy as np
 
 class BaseAgent:
     """Abstract agent.  All subclasses *must* implement :py:meth:`act`."""
@@ -17,6 +18,13 @@ class BaseAgent:
         self.tokenizer = tokenizer
         self.processor = processor
         self.config = config
+
+        agent_ids = config.agent.agent_ids
+        agent_models = config.agent.agent_models
+        # agent_ids map one-to-one to agent_models
+        
+        assert self.name in agent_ids
+        self.model_id = agent_models[agent_ids.index(self.name)]
 
         self.start_tag = None
         self.end_tag = None
@@ -81,6 +89,9 @@ class BaseAgent:
         batch = batch.union(batch_output)
         
         text_repsonses = self.tokenizer.batch_decode(batch.batch['responses'], skip_special_tokens=True)
+
+        # insert model name
+        batch.non_tensor_batch['model_id'] = np.array([self.model_id] * len(batch), dtype=object)
 
         return batch, text_repsonses
 

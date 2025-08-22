@@ -1,11 +1,16 @@
 set -x
-ENGINE=${1:-vllm}
-export CUDA_VISIBLE_DEVICES=0,1
 
-multi_agent=True
-agent_list='["Search Agent"]'
-# agent_list='["Reflexion Agent", "Search Agent"]'
-# agent_list='["Reflexion Agent", "Search Agent", "Verify Agent"]'
+export CUDA_VISIBLE_DEVICES=2,3,4,5
+
+agent_ids='["Reflexion Agent", "Search Agent"]'
+# agent_ids='["Reflexion Agent", "Search Agent", "Verify Agent"]'
+
+agent_models='["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct"]'
+
+# "meta-llama/Llama-3.2-3B-Instruct"
+# "Qwen/Qwen3-4B-Instruct-2507"
+# "Qwen/Qwen2.5-1.5B-Instruct"
+
 executor_type=search
 use_agent_memory=False
 
@@ -17,19 +22,18 @@ ppo_mini_update_num=10
 
 algorithm=grpo
 gigpo_mode=mean_std_norm # "mean_norm" or "mean_std_norm"
-model=Qwen/Qwen3-4B-Instruct-2507
 
 max_prompt_length=4096
 max_response_length=1024
 
 
-if [ "$multi_agent" = "True" ]; then
-    agent_name_tag=$(echo "$agent_list" | jq -r '.[]' | sed 's/ Agent//g' | paste -sd+ -)
-else
-    agent_name_tag="Single"
-fi
 
-experiment_name="${algorithm}_$(basename $model)_bs${train_data_size}_${group_size}group_${max_turn}turn_${ppo_mini_update_num}update_${max_prompt_length}prompt_${max_response_length}res_${agent_name_tag}"
+model_name_tag=$(jq -r '.[]' <<< "$agent_models"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
+agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
+
+combined_tag=$(paste -d_ <(echo "$agent_name_tag") <(echo "$model_name_tag") | paste -sd_ -)
+
+experiment_name="${algorithm}_bs${train_data_size}_${group_size}group_${max_turn}turn_${ppo_mini_update_num}update_${max_prompt_length}prompt_${max_response_length}res_${combined_tag}"
 
 
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
@@ -46,7 +50,7 @@ python3 -m verl.trainer.main_ppo \
     data.filter_overlong_prompts=False \
     data.truncation='left' \
     data.return_raw_chat=True \
-    actor_rollout_ref.model.path=$model \
+    actor_rollout_ref.model.path=None \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=0.1 \
     actor_rollout_ref.model.use_remove_padding=True \
@@ -61,8 +65,8 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
-    actor_rollout_ref.rollout.name=$ENGINE \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+    actor_rollout_ref.rollout.name=sglang \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
@@ -81,15 +85,15 @@ python3 -m verl.trainer.main_ppo \
     env.max_steps=$max_turn \
     env.rollout.n=$group_size \
     env.history_length=$max_turn \
-    agent.multi_agent=$multi_agent \
-    agent.agent_list="$agent_list" \
+    agent.agent_ids="$agent_ids" \
+    agent.agent_models="$agent_models" \
     agent.executor_type=$executor_type \
     agent.use_agent_memory=$use_agent_memory \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='multiagent_search' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=2 \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
     trainer.save_freq=50 \
     trainer.test_freq=150 \

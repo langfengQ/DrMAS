@@ -265,7 +265,7 @@ def process_image(image, max_pixels: int = 2048 * 2048, min_pixels: int = 256 * 
     return image
 
 
-def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
+def adjust_batch(config, data: DataProto, model_id: str, mode="copy") -> DataProto:
     use_adaptive_bs = config.actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size
     ppo_mini_update_num = config.actor_rollout_ref.actor.ppo_mini_update_num
 
@@ -273,10 +273,8 @@ def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
 
     size_divisor_ref = config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu * world_size
     size_divisor_rollout = config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu * world_size
-    if use_adaptive_bs:
-        size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * world_size * ppo_mini_update_num
-    else:
-        size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * world_size
+
+    size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * world_size
         
     size_divisor = np.lcm.reduce(np.array([size_divisor_ref, size_divisor_rollout, size_divisor_actor])).item()
 
@@ -315,12 +313,54 @@ def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
         adjusted_bs = len(adjusted_batch)
         ulysses_sequence_parallel_size = config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1)
         assert config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1) == config.critic.get("ulysses_sequence_parallel_size", 1)
-        assert adjusted_bs % ppo_mini_update_num == 0, f"Adjusted batch size {adjusted_bs} is not divisible by (update_num*node_num//ulysses_sequence_parallel_size) {ppo_mini_update_num*world_size//ulysses_sequence_parallel_size}."
-        adjusted_batch.meta_info["ppo_mini_batch_size"] = (adjusted_bs // (ppo_mini_update_num*world_size//ulysses_sequence_parallel_size))
-        assert adjusted_batch.meta_info["ppo_mini_batch_size"] > 0, "ppo_mini_batch_size must be greater than 0."
+        # assert adjusted_bs % ppo_mini_update_num == 0, f"Adjusted batch size {adjusted_bs} is not divisible by (update_num*node_num//ulysses_sequence_parallel_size) {ppo_mini_update_num*world_size//ulysses_sequence_parallel_size}."
+        adjusted_batch.meta_info[f"{model_id}/ppo_mini_batch_size"] = -(-adjusted_bs // (ppo_mini_update_num*world_size//ulysses_sequence_parallel_size)) # ceil division
+        assert adjusted_batch.meta_info[f"{model_id}/ppo_mini_batch_size"] > 0, "ppo_mini_batch_size must be greater than 0."
 
     return adjusted_batch
 
+def split_batch_by_model_ids(unique_model_ids: list, data: DataProto) -> Dict[str, DataProto]:
+    """
+    Split a DataProto batch into multiple batches based on unique model IDs.
+    
+    Parameters:
+        unique_model_ids (list): List of unique model IDs to split the batch by.
+        data (DataProto): Input batch containing agent IDs in non_tensor_batch['agent_id']
+    
+    Returns:
+        Dict[str, DataProto]: Dictionary mapping agent IDs to their respective DataProto batches
+    """
+    model_ids = data.non_tensor_batch.get('model_id', None)
+    if model_ids is None:
+        raise ValueError("DataProto does not contain 'model_id' in non_tensor_batch.")
+
+    split_batches = {}
+    
+    for _id in unique_model_ids:
+        indices = np.where(model_ids == _id)[0]
+        split_batches[_id] = data.select_idxs(indices)
+    
+    return split_batches
+
+def combine_batches(split_batches: Dict[str, DataProto]) -> DataProto:
+    """
+    Combine multiple DataProto batches into a single batch.
+    
+    Parameters:
+        split_batches (Dict[str, DataProto]): Dictionary mapping agent IDs to their respective DataProto batches
+    
+    Returns:
+        DataProto: Combined batch containing all data from the input split batches
+    """
+    combined_batch = None
+    
+    for _id, batch in split_batches.items():
+        if combined_batch is None:
+            combined_batch = batch
+        else:
+            combined_batch = DataProto.concat([combined_batch, batch])
+    
+    return combined_batch
 
 def filter_group_data(batch_list : List[Dict],
                         episode_rewards: np.ndarray,

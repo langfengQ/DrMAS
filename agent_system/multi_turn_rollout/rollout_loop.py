@@ -346,35 +346,39 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
     def __init__(
         self,
         config: Any,
-        tokenizer: PreTrainedTokenizer,
-        processor: Any = None,
+        tokenizers: Dict[str, PreTrainedTokenizer],
+        processors: Dict[str, Any] = None,
     ):
-        super().__init__(config=config, tokenizer=tokenizer, processor=processor)
+        super().__init__(config=config, tokenizer=tokenizers, processor=processors)
 
-        agent_list = config.agent.agent_list
+        agent_ids = config.agent.agent_ids
+        agent_models = config.agent.agent_models
         executor_type = config.agent.executor_type
-        print("agent_list: ", agent_list)
+        print("agent_ids: ", agent_ids)
         print("executor_type: ", executor_type)
 
         if executor_type == "chain":
             self.multiagent_executor: BaseExecutor = MultiAgentChainExecutor(
-                agent_list=agent_list,
-                tokenizer=tokenizer,
-                processor=processor,
+                agent_ids=agent_ids,
+                agent_models=agent_models,
+                tokenizers=tokenizers,
+                processors=processors,
                 config=config,
             )
         elif executor_type == "hierarchy":
             self.multiagent_executor: BaseExecutor = MultiAgentHierarchicalExecutor(
-                agent_list=agent_list,
-                tokenizer=tokenizer,
-                processor=processor,
+                agent_ids=agent_ids,
+                agent_models=agent_models,
+                tokenizers=tokenizers,
+                processors=processors,
                 config=config,
             )
         elif executor_type == "search":
             self.multiagent_executor: BaseExecutor = SearchMultiAgentExecutor(
-                agent_list=agent_list,
-                tokenizer=tokenizer,
-                processor=processor,
+                agent_ids=agent_ids,
+                agent_models=agent_models,
+                tokenizers=tokenizers,
+                processors=processors,
                 config=config,
             )
         else:
@@ -416,7 +420,7 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
             text_actions, self.multiagent_batch_buffer = self.multiagent_executor.run(
                 gen_batch=gen_batch,
                 env_obs=obs,
-                actor_rollout_wg=actor_rollout_wg,
+                actor_rollout_wgs=actor_rollout_wg,
                 step=_step+1
             )
             next_obs, rewards, dones, infos = envs.step(text_actions)
