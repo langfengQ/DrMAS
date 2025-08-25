@@ -346,29 +346,29 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
     def __init__(
         self,
         config: Any,
+        wg_to_agents_mapping: Dict[str, List[Dict[str, str]]],
         tokenizers: Dict[str, PreTrainedTokenizer],
         processors: Dict[str, Any] = None,
     ):
         super().__init__(config=config, tokenizer=tokenizers, processor=processors)
 
         agent_ids = config.agent.agent_ids
-        agent_models = config.agent.agent_models
+        model_ids = config.agent.model_ids
         executor_type = config.agent.executor_type
         print("agent_ids: ", agent_ids)
         print("executor_type: ", executor_type)
 
+        agents_to_wg_mapping = {}
+        for wg_id, agents in wg_to_agents_mapping.items():
+            for a in agents:
+                agent_id = a['agent_id']
+                agents_to_wg_mapping[agent_id] = wg_id
+
         if executor_type == "chain":
             self.multiagent_executor: BaseExecutor = MultiAgentChainExecutor(
                 agent_ids=agent_ids,
-                agent_models=agent_models,
-                tokenizers=tokenizers,
-                processors=processors,
-                config=config,
-            )
-        elif executor_type == "hierarchy":
-            self.multiagent_executor: BaseExecutor = MultiAgentHierarchicalExecutor(
-                agent_ids=agent_ids,
-                agent_models=agent_models,
+                model_ids=model_ids,
+                agents_to_wg_mapping=agents_to_wg_mapping,
                 tokenizers=tokenizers,
                 processors=processors,
                 config=config,
@@ -376,7 +376,8 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         elif executor_type == "search":
             self.multiagent_executor: BaseExecutor = SearchMultiAgentExecutor(
                 agent_ids=agent_ids,
-                agent_models=agent_models,
+                model_ids=model_ids,
+                agents_to_wg_mapping=agents_to_wg_mapping,
                 tokenizers=tokenizers,
                 processors=processors,
                 config=config,
@@ -417,7 +418,7 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         for _step in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
             ###############################
-            text_actions, self.multiagent_batch_buffer = self.multiagent_executor.run(
+            text_actions, multiagent_batch_buffer = self.multiagent_executor.run(
                 gen_batch=gen_batch,
                 env_obs=obs,
                 actor_rollout_wgs=actor_rollout_wg,
@@ -437,17 +438,18 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
 
             assert len(rewards) == batch_size, f"env should return rewards for all environments, got {len(rewards)} rewards for {batch_size} environments"
 
-            for data in self.multiagent_batch_buffer:
-                agent_name, agent_batch = data['name'], data['batch']
-                agent_batch.non_tensor_batch['agent'] = np.array([agent_name for _ in range(batch_size)], dtype=object)
+            for data in multiagent_batch_buffer:
+                agent_id, agent_batch = data['agent_id'], data['batch']
+                agent_batch.non_tensor_batch['agent_id'] = np.array([agent_id for _ in range(batch_size)], dtype=object)
                 agent_batch.non_tensor_batch['uid'] = uid_batch
                 agent_batch.non_tensor_batch['traj_uid'] = traj_uid
                 agent_batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
                 agent_batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
                 agent_batch_list: list[dict] = to_list_of_dict(agent_batch)
                 for i in range(batch_size):
-                    total_batch_list[i].append(agent_batch_list[i])
-                    total_infos[i].append(infos[i])
+                    if agent_batch_list[i]['agent_active_mask']:
+                        total_batch_list[i].append(agent_batch_list[i])
+                        total_infos[i].append(infos[i])
 
             # Update done states
             is_done = np.logical_or(is_done, dones)

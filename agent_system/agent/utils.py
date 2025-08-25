@@ -1,13 +1,49 @@
 from typing import List, Tuple
 import numpy as np
 import re
+from collections import defaultdict
 
-def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, check_think_tag: bool = False) -> List[str]:
+def normalize_agent_id(agent_id: str) -> str:
+    return agent_id.strip().replace(" ", "")
+
+def normalize_model_id(model_id: str) -> str:
+    return model_id.split("/")[-1]
+
+def build_wg_ids(agent_ids, model_ids, model_sharing=True):
+    if len(agent_ids) != len(model_ids):
+        raise ValueError("agent_ids and model_ids must have the same length.")
+
+    if not model_sharing:
+        wg_to_agents = {}
+        for agent_id, model_id in zip(agent_ids, model_ids):
+            norm_agent = normalize_model_id(agent_id)
+            norm_model = normalize_model_id(model_id)
+            wg_id = f"{norm_model}_{norm_agent}"
+            wg_to_agents[wg_id] = [{"agent_id": agent_id, "model_id": model_id}]
+        return wg_to_agents
+    else:
+        model_to_agents = defaultdict(list)
+        for agent_id, model_id in zip(agent_ids, model_ids):
+            model_to_agents[model_id].append(agent_id)
+
+        wg_to_agents = {}
+        for model_id, agents in model_to_agents.items():
+            norm_agents = [normalize_agent_id(a) for a in agents]
+            norm_model = normalize_model_id(model_id)
+            wg_id = "_".join([norm_model] + norm_agents)
+            wg_to_agents[wg_id] = [
+                {"agent_id": a, "model_id": model_id} for a in agents
+            ]
+        return wg_to_agents
+
+def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, check_think_tag: bool = False, return_whole_response: bool = False) -> List[str]:
     """
     An function to process the text_repsonses
     text_repsonses: the list of text_repsonses to be processeed, it is a list of strings.
     start_tag: the start tag to be used for projection, e.g., "<action>"
     end_tag: the end tag to be used for projection, e.g., "</action>
+    check_think_tag: whether to check the <think>...</think> tag, default is False.
+    return_whole_response: whether to return the whole response, default is False.
     """
     valids = [0] * len(text_repsonses)
 
@@ -18,17 +54,22 @@ def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, 
         try:
             if start_idx == -1 or end_idx == -1:
                 valids[i] = 0
-                text_repsonses[i] = ""
+                if not return_whole_response:
+                    text_repsonses[i] = ""
                 continue
+            
+            extracted_action = text_repsonses[i][start_idx + len(start_tag):end_idx].strip()
+            if not return_whole_response:
+                text_repsonses[i] = extracted_action
+            else:
+                text_repsonses[i] = original_str[:start_idx + len(start_tag)] + extracted_action + original_str[end_idx:]
 
-            extracted_action = text_repsonses[i][start_idx + len(start_tag):end_idx]
-
-            text_repsonses[i] = extracted_action.strip()
             valids[i] = 1
 
         except:
             valids[i] = 0
-            text_repsonses[i] = ""
+            if not return_whole_response:
+                text_repsonses[i] = ""
 
         # check if contains any Chinese characters
         if re.search(r'[\u4e00-\u9fff]', original_str):

@@ -596,10 +596,10 @@ class ActorRolloutRefWorker(Worker):
         # Support all hardwares
         data = data.to(get_torch_device().current_device())
 
-        model_ids = data.non_tensor_batch['model_id']
-        if not all(model_id == model_ids[0] for model_id in model_ids):
-            raise ValueError(f"All model ids must be the same, but got {model_ids}")
-        model_id = model_ids[0]
+        wg_ids = data.non_tensor_batch['wg_id']
+        if not all(wg_id == wg_ids[0] for wg_id in wg_ids):
+            raise ValueError(f"All model ids must be the same, but got {wg_ids}")
+        wg_id = wg_ids[0]
         
         assert self._is_actor
         if self._is_offload_param:
@@ -610,22 +610,22 @@ class ActorRolloutRefWorker(Worker):
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data=data)
             # perform training
-            with Timer(name=f"update_policy_{model_id}", logger=None) as timer:
+            with Timer(name=f"update_policy_{wg_id}", logger=None) as timer:
                 metrics = self.actor.update_policy(data=data)
             delta_time = timer.last
-            global_num_tokens = data.meta_info[f"{model_id}/global_token_num"]
+            global_num_tokens = data.meta_info[f"{wg_id}/global_token_num"]
             estimated_flops, promised_flops = self.flops_counter.estimate_flops(global_num_tokens, delta_time)
-            metrics[f"perf/{model_id}/mfu/actor"] = estimated_flops * self.config.actor.ppo_epochs / promised_flops / self.world_size
-            metrics[f"perf/{model_id}/max_memory_allocated_gb"] = get_torch_device().max_memory_allocated() / (1024**3)
-            metrics[f"perf/{model_id}/max_memory_reserved_gb"] = get_torch_device().max_memory_reserved() / (1024**3)
-            metrics[f"perf/{model_id}/cpu_memory_used_gb"] = psutil.virtual_memory().used / (1024**3)
+            metrics[f"perf/{wg_id}/mfu/actor"] = estimated_flops * self.config.actor.ppo_epochs / promised_flops / self.world_size
+            metrics[f"perf/{wg_id}/max_memory_allocated_gb"] = get_torch_device().max_memory_allocated() / (1024**3)
+            metrics[f"perf/{wg_id}/max_memory_reserved_gb"] = get_torch_device().max_memory_reserved() / (1024**3)
+            metrics[f"perf/{wg_id}/cpu_memory_used_gb"] = psutil.virtual_memory().used / (1024**3)
 
             lr = self.actor_lr_scheduler.get_last_lr()[0]
-            metrics[f"actor/{model_id}/lr"] = lr
+            metrics[f"actor/{wg_id}/lr"] = lr
             self.actor_lr_scheduler.step()
 
             # TODO: here, we should return all metrics
-            output = DataProto(meta_info={f"{model_id}/metrics": metrics})
+            output = DataProto(meta_info={f"{wg_id}/metrics": metrics})
 
             output = self.ulysses_sharding_manager.postprocess_data(data=output)
             output = output.to("cpu")

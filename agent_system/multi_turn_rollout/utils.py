@@ -265,7 +265,7 @@ def process_image(image, max_pixels: int = 2048 * 2048, min_pixels: int = 256 * 
     return image
 
 
-def adjust_batch(config, data: DataProto, model_id: str, mode="copy") -> DataProto:
+def adjust_batch(config, data: DataProto, wg_id: str, mode="copy") -> DataProto:
     use_adaptive_bs = config.actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size
     ppo_mini_update_num = config.actor_rollout_ref.actor.ppo_mini_update_num
 
@@ -314,30 +314,30 @@ def adjust_batch(config, data: DataProto, model_id: str, mode="copy") -> DataPro
         ulysses_sequence_parallel_size = config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1)
         assert config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1) == config.critic.get("ulysses_sequence_parallel_size", 1)
         # assert adjusted_bs % ppo_mini_update_num == 0, f"Adjusted batch size {adjusted_bs} is not divisible by (update_num*node_num//ulysses_sequence_parallel_size) {ppo_mini_update_num*world_size//ulysses_sequence_parallel_size}."
-        adjusted_batch.meta_info[f"{model_id}/ppo_mini_batch_size"] = -(-adjusted_bs // (ppo_mini_update_num*world_size//ulysses_sequence_parallel_size)) # ceil division
-        assert adjusted_batch.meta_info[f"{model_id}/ppo_mini_batch_size"] > 0, "ppo_mini_batch_size must be greater than 0."
+        adjusted_batch.meta_info[f"{wg_id}/ppo_mini_batch_size"] = -(-adjusted_bs // (ppo_mini_update_num*world_size//ulysses_sequence_parallel_size)) # ceil division
+        assert adjusted_batch.meta_info[f"{wg_id}/ppo_mini_batch_size"] > 0, "ppo_mini_batch_size must be greater than 0."
 
     return adjusted_batch
 
-def split_batch_by_model_ids(unique_model_ids: list, data: DataProto) -> Dict[str, DataProto]:
+def split_batch_by_wg_ids(unique_wg_ids: list, data: DataProto) -> Dict[str, DataProto]:
     """
     Split a DataProto batch into multiple batches based on unique model IDs.
     
     Parameters:
-        unique_model_ids (list): List of unique model IDs to split the batch by.
+        unique_wg_ids (list): List of unique workgroup IDs to split the batch by.
         data (DataProto): Input batch containing agent IDs in non_tensor_batch['agent_id']
     
     Returns:
         Dict[str, DataProto]: Dictionary mapping agent IDs to their respective DataProto batches
     """
-    model_ids = data.non_tensor_batch.get('model_id', None)
-    if model_ids is None:
-        raise ValueError("DataProto does not contain 'model_id' in non_tensor_batch.")
+    wg_ids = data.non_tensor_batch.get('wg_id', None)
+    if wg_ids is None:
+        raise ValueError("DataProto does not contain 'wg_id' in non_tensor_batch.")
 
     split_batches = {}
     
-    for _id in unique_model_ids:
-        indices = np.where(model_ids == _id)[0]
+    for _id in unique_wg_ids:
+        indices = np.where(wg_ids == _id)[0]
         split_batches[_id] = data.select_idxs(indices)
     
     return split_batches

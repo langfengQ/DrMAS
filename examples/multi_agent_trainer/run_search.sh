@@ -2,10 +2,15 @@ set -x
 
 export CUDA_VISIBLE_DEVICES=2,3,4,5
 
-agent_ids='["Reflexion Agent", "Search Agent"]'
-# agent_ids='["Reflexion Agent", "Search Agent", "Verify Agent"]'
+agent_ids='["Search Agent", "Critic Agent"]'
+# "Reflexion Agent"
+# "Search Agent"
+# "Critic Agent"
 
-agent_models='["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct"]'
+model_ids='["Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-3B-Instruct"]'
+model_sharing=False
+random_dropout=False
+random_dropout_ratio=0.5
 
 # "meta-llama/Llama-3.2-3B-Instruct"
 # "Qwen/Qwen3-4B-Instruct-2507"
@@ -28,12 +33,14 @@ max_response_length=1024
 
 
 
-model_name_tag=$(jq -r '.[]' <<< "$agent_models"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
+model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
 agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
 
 combined_tag=$(paste -d_ <(echo "$agent_name_tag") <(echo "$model_name_tag") | paste -sd_ -)
 
-experiment_name="${algorithm}_bs${train_data_size}_${group_size}group_${max_turn}turn_${ppo_mini_update_num}update_${max_prompt_length}prompt_${max_response_length}res_${combined_tag}"
+dropout_tag=$([[ "${random_dropout,,}" == "true" ]] && printf 'dropout%s' "${random_dropout_ratio}" || printf '%s' 'nodropout')
+
+experiment_name="${algorithm}_bs${train_data_size}_${group_size}group_${max_turn}turn_${ppo_mini_update_num}update_${max_prompt_length}prompt_${max_response_length}res_${dropout_tag}_share${model_sharing}_${combined_tag}"
 
 
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
@@ -62,7 +69,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
@@ -86,9 +93,12 @@ python3 -m verl.trainer.main_ppo \
     env.rollout.n=$group_size \
     env.history_length=$max_turn \
     agent.agent_ids="$agent_ids" \
-    agent.agent_models="$agent_models" \
+    agent.model_ids="$model_ids" \
+    agent.model_sharing=$model_sharing \
     agent.executor_type=$executor_type \
     agent.use_agent_memory=$use_agent_memory \
+    agent.random_dropout=$random_dropout \
+    agent.random_dropout_ratio=$random_dropout_ratio \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='multiagent_search' \

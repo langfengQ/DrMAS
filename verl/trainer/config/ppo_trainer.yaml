@@ -288,11 +288,13 @@ ray_init:
 
 agent: # only for multi-agent training
   multi_agent: True # True for multi-agent training, False for single-agent training
-  agent_ids: ["Reflexion Agent", "action", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "action", "Memory Agent"]
-  agent_models: ["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct"]
+  agent_ids: ["Reflexion Agent", "Action Agent", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "Action Agent", "Memory Agent"]
+  model_ids: ["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct"]
   model_sharing: True 
   executor_type: chain
   use_agent_memory: False
+  random_dropout: False
+  random_dropout_ratio: 0.2
 
 
 env:

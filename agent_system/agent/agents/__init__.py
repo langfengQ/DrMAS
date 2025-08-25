@@ -4,7 +4,7 @@ from .memory_agent import MemoryAgent
 from .planning_agent import PlanningAgent
 from .reflexion_agent import ReflexionAgent
 from .search_agent import SearchAgent
-from .verify_agent import VerifyAgent
+from .critic_agent import CriticAgent
 
 __all__ = [
     "ActionAgent",
@@ -12,5 +12,5 @@ __all__ = [
     "PlanningAgent",
     "ReflexionAgent",
     "SearchAgent",
-    "VerifyAgent",
+    "CriticAgent",
 ]

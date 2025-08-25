@@ -12,19 +12,14 @@ import numpy as np
 class BaseAgent:
     """Abstract agent.  All subclasses *must* implement :py:meth:`act`."""
 
-    def __init__(self, name: str, prompt: str, tokenizer: PreTrainedTokenizer, processor, config: Any):
+    def __init__(self, name: str, prompt: str, wg_id: str, tokenizer: PreTrainedTokenizer, processor, config: Any):
         self.name = name
         self.prompt = prompt
         self.tokenizer = tokenizer
         self.processor = processor
         self.config = config
-
-        agent_ids = config.agent.agent_ids
-        agent_models = config.agent.agent_models
-        # agent_ids map one-to-one to agent_models
         
-        assert self.name in agent_ids
-        self.model_id = agent_models[agent_ids.index(self.name)]
+        self.wg_id = wg_id
 
         self.start_tag = None
         self.end_tag = None
@@ -54,14 +49,6 @@ class BaseAgent:
                                                     step=step)
         return obs
 
-    def postprocess_batch(self, team_context: List[str], text_response: str) -> List[str]:
-        """Update the observation dictionary with the text response."""
-        # Naive append of the latest responses to observations
-        for i in range(len(team_context)):
-            # if team_context[i] == "": 
-            #     team_context[i] = "## Your Teammates' Outputs\n"
-            team_context[i] = team_context[i] + f"""\nThe output of "{self.name}": {text_response[i]}\n"""
-        return team_context
 
     def _generate_with_llm(self, batch: DataProto, actor_rollout_wg, meta_info) -> Tuple[DataProto, List[str]]:
         """Helper: prompt → input_ids → actor_rollout_wg → decoded str."""
@@ -91,7 +78,7 @@ class BaseAgent:
         text_repsonses = self.tokenizer.batch_decode(batch.batch['responses'], skip_special_tokens=True)
 
         # insert model name
-        batch.non_tensor_batch['model_id'] = np.array([self.model_id] * len(batch), dtype=object)
+        batch.non_tensor_batch['wg_id'] = np.array([self.wg_id] * len(batch), dtype=object)
 
         return batch, text_repsonses
 
@@ -117,7 +104,6 @@ class BaseAgent:
             Tuple[DataProto, List[str], List[str]]:
                 - batch (DataProto): The processed batch after generation.
                 - text_repsonses (List[str]): The generated text responses.
-                - team_context (List[str]): Updated team context after processing.
         """
         raise NotImplementedError
 

@@ -37,7 +37,7 @@ class EpisodeRewardManager:
 
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
 
-        already_print_data_sources = {}
+        already_print = {}
 
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
@@ -53,11 +53,11 @@ class EpisodeRewardManager:
             valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
             valid_response_ids = response_ids[:valid_response_length]
 
-            model_id = data_item.non_tensor_batch['model_id']
-            agent_id = data_item.non_tensor_batch['agent']
+            agent_id = data_item.non_tensor_batch['agent_id']
+            wg_id = data_item.non_tensor_batch['wg_id']
             # decode
-            prompt_str = self.tokenizers[model_id].decode(valid_prompt_ids, skip_special_tokens=False)
-            response_str = self.tokenizers[model_id].decode(valid_response_ids, skip_special_tokens=False)
+            prompt_str = self.tokenizers[wg_id].decode(valid_prompt_ids, skip_special_tokens=False)
+            response_str = self.tokenizers[wg_id].decode(valid_response_ids, skip_special_tokens=False)
 
             # ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
 
@@ -79,11 +79,12 @@ class EpisodeRewardManager:
                 score = episode_rewards
             reward_tensor[i, valid_response_length - 1] = torch.tensor(score, dtype=torch.float32, device=prompt_ids.device)
 
-            if data_source not in already_print_data_sources:
-                already_print_data_sources[data_source] = 0
+            tag= f"{data_source}{agent_id}"
+            if tag not in already_print:
+                already_print[tag] = 0
 
-            if already_print_data_sources[data_source] < self.num_examine and np.random.random() < 0.1:
-                already_print_data_sources[data_source] += 1
+            if already_print[tag] < self.num_examine and np.random.random() < 0.1:
+                already_print[tag] += 1
                 print(f"[{agent_id}][prompt]", prompt_str)
                 print(f"[{agent_id}][response]", response_str)
                 print("[score]", score)

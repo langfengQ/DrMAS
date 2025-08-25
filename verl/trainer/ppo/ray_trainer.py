@@ -62,7 +62,8 @@ from verl.utils.tracking import ValidationGenerationsLogger
 from verl.workers.rollout.async_server import AsyncLLMServerManager
 from gigpo import core_gigpo
 
-from agent_system.multi_turn_rollout import TrajectoryCollector, adjust_batch, split_batch_by_model_ids, combine_batches
+from agent_system.multi_turn_rollout import TrajectoryCollector, adjust_batch, split_batch_by_wg_ids, combine_batches
+from agent_system.agent.utils import build_wg_ids, normalize_agent_id, normalize_model_id
 
 WorkerType = Type[Worker]
 
@@ -393,7 +394,8 @@ class RayPPOTrainer:
         self,
         config,
         tokenizers,
-        default_model,
+        default_wg,
+        wg_to_agents_mapping: dict[str, list[dict[str, str]]],
         role_worker_mapping: dict[Role, WorkerType],
         resource_pool_manager: ResourcePoolManager,
         ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
@@ -427,12 +429,15 @@ class RayPPOTrainer:
         #     assert Role.ActorRollout in role_worker_mapping, f"{role_worker_mapping.keys()=}"
 
         self.multi_agent = self.config.agent.multi_agent
-        if self.multi_agent:
-            self.agent_ids = self.config.agent.agent_ids
-            self.agent_models = self.config.agent.agent_models
-            assert len(self.agent_ids) == len(self.agent_models), "agent_ids and agent_models must have the same length"
-        
-        self.defalut_model = default_model
+        assert self.multi_agent
+        self.agent_ids = self.config.agent.agent_ids
+        self.model_ids = self.config.agent.model_ids
+        assert len(self.agent_ids) == len(self.model_ids), "agent_ids and model_ids must have the same length"
+
+        self.model_sharing = self.config.agent.model_sharing
+        self.wg_to_agents_mapping = wg_to_agents_mapping
+
+        self.default_wg = default_wg
 
         self.role_worker_mapping = role_worker_mapping
         self.resource_pool_manager = resource_pool_manager
@@ -589,9 +594,9 @@ class RayPPOTrainer:
         from verl.trainer.main_ppo import create_rl_dataset, create_rl_sampler
 
         if train_dataset is None:
-            train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizers[self.defalut_model], self.processors[self.defalut_model])
+            train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizers[self.default_wg], self.processors[self.default_wg])
         if val_dataset is None:
-            val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizers[self.defalut_model], self.processors[self.defalut_model])
+            val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizers[self.default_wg], self.processors[self.default_wg])
         self.train_dataset, self.val_dataset = train_dataset, val_dataset
 
         if train_sampler is None:
@@ -717,7 +722,7 @@ class RayPPOTrainer:
             # Store original inputs
             input_ids = test_batch.batch["input_ids"]
             # TODO: Can we keep special tokens except for padding tokens?
-            input_texts = [self.tokenizers[self.defalut_model].decode(ids, skip_special_tokens=True) for ids in input_ids]
+            input_texts = [self.tokenizers[self.default_wg].decode(ids, skip_special_tokens=True) for ids in input_ids]
             sample_inputs.extend(input_texts)
 
             batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
@@ -734,8 +739,8 @@ class RayPPOTrainer:
             )
 
             test_gen_batch.meta_info = {
-                "eos_token_id": self.tokenizers[self.defalut_model].eos_token_id,
-                "pad_token_id": self.tokenizers[self.defalut_model].pad_token_id,
+                "eos_token_id": self.tokenizers[self.default_wg].eos_token_id,
+                "pad_token_id": self.tokenizers[self.default_wg].pad_token_id,
                 "recompute_log_prob": False,
                 "do_sample": self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 "validate": True,
@@ -761,8 +766,8 @@ class RayPPOTrainer:
             test_batch = test_output_gen_batch
             # Store generated outputs
             output_ids = test_output_gen_batch.batch["responses"]
-            model_ids = test_output_gen_batch.non_tensor_batch["model_id"]
-            output_texts = [self.tokenizers[model].decode(ids, skip_special_tokens=True) for ids, model in zip(output_ids, model_ids)]
+            wg_ids = test_output_gen_batch.non_tensor_batch["wg_id"]
+            output_texts = [self.tokenizers[model].decode(ids, skip_special_tokens=True) for ids, model in zip(output_ids, wg_ids)]
             sample_outputs.extend(output_texts)
 
             # test_batch = test_batch.union(test_output_gen_batch)
@@ -820,25 +825,20 @@ class RayPPOTrainer:
 
         self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
-        assert self.multi_agent
-        self.model_to_agent = defaultdict(list)
-        for _agent_model, id in zip(self.agent_models, self.agent_ids):
-            self.model_to_agent[_agent_model].append(id)
-
         # Set configurations for each model
-        _model_configs = {}
-        for _agent_model, _agent_ids in self.model_to_agent.items():
-            _model_configs[_agent_model] = deepcopy(self.config.actor_rollout_ref)
-            _model_configs[_agent_model].model.path = _agent_model
+        wg_configs = {}
+        for wg_id, agents_list in self.wg_to_agents_mapping.items():
+            wg_configs[wg_id] = deepcopy(self.config.actor_rollout_ref)
+            wg_configs[wg_id].model.path = agents_list[0]['model_id']
 
         # create actor and rollout
         if self.hybrid_engine:
-            for _agent_model, _agent_ids in self.model_to_agent.items():
+            for wg_id, agents_list in self.wg_to_agents_mapping.items():
                 resource_pool = self.resource_pool_manager.get_resource_pool(Role.ActorRollout)
-                role_name = "actor_rollout/" + "+".join(agent.strip().replace(" ", "") for agent in _agent_ids) + "/"
+                role_name = "actor_rollout/" + "+".join(normalize_agent_id(agent_model["agent_id"]) for agent_model in agents_list) + "/"
                 actor_rollout_cls = RayClassWithInitArgs(
                     cls=self.role_worker_mapping[Role.ActorRollout],
-                    config=_model_configs[_agent_model],
+                    config=wg_configs[wg_id],
                     role=role_name,
                 )
                 self.resource_pool_to_cls[resource_pool][role_name] = actor_rollout_cls
@@ -854,10 +854,10 @@ class RayPPOTrainer:
         # create reference policy if needed
         if self.use_reference_policy:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RefPolicy)
-            for _agent_model, _agent_ids in self.model_to_agent.items():
-                role_name = "ref/" + "+".join(agent.strip().replace(" ", "") for agent in _agent_ids) + "/"
+            for wg_id, agents_list in self.wg_to_agents_mapping.items():
+                role_name = "ref/" + "+".join(normalize_agent_id(agent_model["agent_id"]) for agent_model in agents_list) + "/"
                 # we use the same config for all ref policies
-                ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy], config=_model_configs[_agent_model], role=role_name)
+                ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy], config=wg_configs[wg_id], role=role_name)
                 self.resource_pool_to_cls[resource_pool][role_name] = ref_policy_cls
 
         # create a reward model if reward_fn is None
@@ -889,12 +889,12 @@ class RayPPOTrainer:
 
         if self.use_reference_policy and not self.ref_in_actor:
             self.ref_policy_wg = {}
-            for _agent_model, _agent_ids in self.model_to_agent.items():
-                role_name = "ref/" + "+".join(agent.strip().replace(" ", "") for agent in _agent_ids) + "/"
+            for wg_id, agents_list in self.wg_to_agents_mapping.items():
+                role_name = "ref/" + "+".join(normalize_agent_id(agent_model["agent_id"]) for agent_model in agents_list) + "/"
                 assert role_name in all_wg, f"Role {role_name} not found in all_wg"
                 ref_policy_wg = all_wg[role_name]
                 ref_policy_wg.init_model()
-                self.ref_policy_wg[_agent_model] = ref_policy_wg
+                self.ref_policy_wg[wg_id] = ref_policy_wg
 
         if self.use_rm:
             self.rm_wg = all_wg["rm"]
@@ -902,13 +902,13 @@ class RayPPOTrainer:
 
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
         self.actor_rollout_wg = {}
-        for _agent_model, _agent_ids in self.model_to_agent.items():
-            role_name = "actor_rollout/" + "+".join(agent.strip().replace(" ", "") for agent in _agent_ids) + "/"
+        for wg_id, agents_list in self.wg_to_agents_mapping.items():
+            role_name = "actor_rollout/" + "+".join(normalize_agent_id(agent_model["agent_id"]) for agent_model in agents_list) + "/"
             assert role_name in all_wg, f"Role {role_name} not found in all_wg"
             actor_rollout_wg = all_wg[role_name]
             actor_rollout_wg.init_model()
 
-            self.actor_rollout_wg[_agent_model] = actor_rollout_wg
+            self.actor_rollout_wg[wg_id] = actor_rollout_wg
 
     def _save_checkpoint(self):
         # path: given_path + `/global_step_{global_steps}` + `/actor`
@@ -916,10 +916,10 @@ class RayPPOTrainer:
 
         print(f"local_global_step_folder: {local_global_step_folder}")
 
-        for model_id in self.model_to_agent.keys():
-            actor_local_path = os.path.join(local_global_step_folder, f"actor/{model_id}")
+        for wg_id in self.wg_to_agents_mapping.keys():
+            actor_local_path = os.path.join(local_global_step_folder, f"actor/{wg_id}")
 
-            actor_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", f"actor/{model_id}")
+            actor_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", f"actor/{wg_id}")
 
             remove_previous_ckpt_in_save = self.config.trainer.get("remove_previous_ckpt_in_save", False)
             if remove_previous_ckpt_in_save:
@@ -927,7 +927,7 @@ class RayPPOTrainer:
             max_actor_ckpt_to_keep = self.config.trainer.get("max_actor_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
             max_critic_ckpt_to_keep = self.config.trainer.get("max_critic_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
 
-            self.actor_rollout_wg[model_id].save_checkpoint(actor_local_path, actor_remote_path, self.global_steps, max_ckpt_to_keep=max_actor_ckpt_to_keep)
+            self.actor_rollout_wg[wg_id].save_checkpoint(actor_local_path, actor_remote_path, self.global_steps, max_ckpt_to_keep=max_actor_ckpt_to_keep)
 
         if self.use_critic:
             critic_local_path = os.path.join(local_global_step_folder, "critic")
@@ -979,9 +979,9 @@ class RayPPOTrainer:
         print(f"Resuming from {global_step_folder}")
 
         # load actor
-        for model_id in self.model_to_agent.keys():
-            actor_path = os.path.join(global_step_folder, f"actor/{model_id}")
-            self.actor_rollout_wg[model_id].load_checkpoint(actor_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load)
+        for wg_id in self.wg_to_agents_mapping.keys():
+            actor_path = os.path.join(global_step_folder, f"actor/{wg_id}")
+            self.actor_rollout_wg[wg_id].load_checkpoint(actor_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load)
         # load critic
         critic_path = os.path.join(global_step_folder, "critic")
         if self.use_critic:
@@ -996,12 +996,12 @@ class RayPPOTrainer:
         else:
             print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
 
-    def _balance_batch(self, batch: DataProto, model_id, metrics, logging_prefix="global_seqlen"):
+    def _balance_batch(self, batch: DataProto, wg_id, metrics, logging_prefix="global_seqlen"):
         """Reorder the data on single controller such that each dp rank gets similar total tokens"""
         attention_mask = batch.batch["attention_mask"]
         batch_size = attention_mask.shape[0]
         global_seqlen_lst = batch.batch["attention_mask"].view(batch_size, -1).sum(-1).tolist()  # (train_batch_size,)
-        world_size = self.actor_rollout_wg[model_id].world_size
+        world_size = self.actor_rollout_wg[wg_id].world_size
         global_partition_lst = get_seqlen_balanced_partitions(global_seqlen_lst, k_partitions=world_size, equal_size=True)
         # reorder based on index. The data will be automatically equally partitioned by dispatch function
         global_idx = torch.tensor([j for partition in global_partition_lst for j in partition])
@@ -1118,25 +1118,25 @@ class RayPPOTrainer:
                         )
                         batch.batch['step_rewards'] = step_rewards_tensor
                     
-                    # multiagent_batch (Dict[str, DataProto]): Dictionary mapping unique_model_ids to their respective DataProto batches
-                    unique_model_ids = list(self.model_to_agent.keys())
-                    multiagent_batch: Dict[str, DataProto] = split_batch_by_model_ids(unique_model_ids, batch)
-                    for model_id in multiagent_batch.keys():
-                        sub_batch = multiagent_batch[model_id]
-                        sub_batch = adjust_batch(self.config, sub_batch, model_id=model_id)
-                        multiagent_batch[model_id] = sub_batch
+                    # multiagent_batch (Dict[str, DataProto]): Dictionary mapping unique_wg_ids to their respective DataProto batches
+                    unique_wg_ids = list(self.wg_to_agents_mapping.keys())
+                    multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
+                    for wg_id in multiagent_batch.keys():
+                        sub_batch = multiagent_batch[wg_id]
+                        sub_batch = adjust_batch(self.config, sub_batch, wg_id=wg_id)
+                        multiagent_batch[wg_id] = sub_batch
                     
                         sub_batch.batch["response_mask"] = compute_response_mask(sub_batch)
                         # balance the number of valid tokens on each dp rank.
                         # Note that this breaks the order of data inside the batch.
                         # Please take care when you implement group based adv computation such as GRPO and rloo
                         if self.config.trainer.balance_batch:
-                            self._balance_batch(sub_batch, model_id, metrics=metrics, logging_prefix= f"global_seqlen/{model_id}")
+                            self._balance_batch(sub_batch, wg_id, metrics=metrics, logging_prefix= f"global_seqlen/{wg_id}")
 
                         # compute global_valid tokens
-                        sub_batch.meta_info[f"{model_id}/global_token_num"] = torch.sum(sub_batch.batch["attention_mask"], dim=-1).tolist()
+                        sub_batch.meta_info[f"{wg_id}/global_token_num"] = torch.sum(sub_batch.batch["attention_mask"], dim=-1).tolist()
 
-                        multiagent_batch[model_id] = sub_batch
+                        multiagent_batch[wg_id] = sub_batch
 
                     batch: DataProto = combine_batches(multiagent_batch)
 
@@ -1153,17 +1153,18 @@ class RayPPOTrainer:
                         else:
                             reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
-                    multiagent_batch: Dict[str, DataProto] = split_batch_by_model_ids(unique_model_ids, batch)
+                    multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
                     # recompute old_log_probs
                     with _timer("old_log_prob", timing_raw):
-                        for model_id in multiagent_batch.keys():
-                            sub_batch = multiagent_batch[model_id]
-                            old_log_prob = self.actor_rollout_wg[model_id].compute_log_prob(sub_batch)
+                        for wg_id in multiagent_batch.keys():
+                            sub_batch = multiagent_batch[wg_id]
+                            assert all(wg_id == wg for wg in sub_batch.non_tensor_batch["wg_id"])
+                            old_log_prob = self.actor_rollout_wg[wg_id].compute_log_prob(sub_batch)
                             entropys = old_log_prob.batch["entropys"]
                             response_masks = sub_batch.batch["response_mask"]
                             loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
                             entropy_loss = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
-                            old_log_prob_metrics = {f"actor/{model_id}/entropy_loss": entropy_loss.detach().item()}
+                            old_log_prob_metrics = {f"actor/{wg_id}/entropy_loss": entropy_loss.detach().item()}
                             metrics.update(old_log_prob_metrics)
                             old_log_prob.batch.pop("entropys")
                             sub_batch = sub_batch.union(old_log_prob)
@@ -1186,25 +1187,26 @@ class RayPPOTrainer:
                                 rollout_probs_diff_std = torch.std(rollout_probs_diff)
                                 metrics.update(
                                     {
-                                        f"training/{model_id}/rollout_probs_diff_max": rollout_probs_diff_max.detach().item(),
-                                        f"training/{model_id}/rollout_probs_diff_mean": rollout_probs_diff_mean.detach().item(),
-                                        f"training/{model_id}/rollout_probs_diff_std": rollout_probs_diff_std.detach().item(),
+                                        f"training/{wg_id}/rollout_probs_diff_max": rollout_probs_diff_max.detach().item(),
+                                        f"training/{wg_id}/rollout_probs_diff_mean": rollout_probs_diff_mean.detach().item(),
+                                        f"training/{wg_id}/rollout_probs_diff_std": rollout_probs_diff_std.detach().item(),
                                     }
                                 )
-                            multiagent_batch[model_id] = sub_batch
+                            multiagent_batch[wg_id] = sub_batch
 
                     if self.use_reference_policy:
                         # compute reference log_prob
                         with _timer("ref", timing_raw):
-                            for model_id in multiagent_batch.keys():
-                                sub_batch = multiagent_batch[model_id]
+                            for wg_id in multiagent_batch.keys():
+                                sub_batch = multiagent_batch[wg_id]
+                                assert all(wg_id == wg for wg in sub_batch.non_tensor_batch["wg_id"])
                                 if not self.ref_in_actor:
-                                    ref_log_prob = self.ref_policy_wg[model_id].compute_ref_log_prob(sub_batch)
+                                    ref_log_prob = self.ref_policy_wg[wg_id].compute_ref_log_prob(sub_batch)
                                 else:
-                                    ref_log_prob = self.actor_rollout_wg[model_id].compute_ref_log_prob(sub_batch)
+                                    ref_log_prob = self.actor_rollout_wg[wg_id].compute_ref_log_prob(sub_batch)
                                 sub_batch = sub_batch.union(ref_log_prob)
 
-                                multiagent_batch[model_id] = sub_batch
+                                multiagent_batch[wg_id] = sub_batch
 
                     batch: DataProto = combine_batches(multiagent_batch)
                     # compute values
@@ -1267,16 +1269,17 @@ class RayPPOTrainer:
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
-                        multiagent_batch: Dict[str, DataProto] = split_batch_by_model_ids(unique_model_ids, batch)
+                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
                         # update actor
                         with _timer("update_actor", timing_raw):
-                            for model_id in multiagent_batch.keys():
-                                sub_batch = multiagent_batch[model_id]
+                            for wg_id in multiagent_batch.keys():
+                                sub_batch = multiagent_batch[wg_id]
+                                assert all(wg_id == wg for wg in sub_batch.non_tensor_batch["wg_id"])
                                 sub_batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
-                                actor_output = self.actor_rollout_wg[model_id].update_actor(sub_batch)
-                                actor_output_metrics = reduce_metrics(actor_output.meta_info[f"{model_id}/metrics"])
+                                actor_output = self.actor_rollout_wg[wg_id].update_actor(sub_batch)
+                                actor_output_metrics = reduce_metrics(actor_output.meta_info[f"{wg_id}/metrics"])
                                 metrics.update(actor_output_metrics)
-                                multiagent_batch[model_id] = sub_batch
+                                multiagent_batch[wg_id] = sub_batch
 
                         batch: DataProto = combine_batches(multiagent_batch)
 
@@ -1286,11 +1289,11 @@ class RayPPOTrainer:
                         with _timer("dump_rollout_generations", timing_raw):
                             print(batch.batch.keys())
                             inputs, outputs = [], []
-                            multiagent_batch: Dict[str, DataProto] = split_batch_by_model_ids(unique_model_ids, batch)
-                            for model_id in multiagent_batch.keys():
-                                sub_batch = multiagent_batch[model_id]
-                                sub_inputs = self.tokenizers[model_id].batch_decode(sub_batch.batch["prompts"], skip_special_tokens=True)
-                                sub_outputs = self.tokenizers[model_id].batch_decode(sub_batch.batch["responses"], skip_special_tokens=True)
+                            multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
+                            for wg_id in multiagent_batch.keys():
+                                sub_batch = multiagent_batch[wg_id]
+                                sub_inputs = self.tokenizers[wg_id].batch_decode(sub_batch.batch["prompts"], skip_special_tokens=True)
+                                sub_outputs = self.tokenizers[wg_id].batch_decode(sub_batch.batch["responses"], skip_special_tokens=True)
                                 inputs += sub_inputs
                                 outputs += sub_outputs
                                 
