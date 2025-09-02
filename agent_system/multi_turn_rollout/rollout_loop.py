@@ -110,7 +110,7 @@ class TrajectoryCollector:
         batch_size = len(gen_batch.batch)
         
         # Initial observations from the environment
-        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.get('tools_kwargs', None))
+        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop('env_kwargs', None))
 
         if self.config.env.rollout.n > 0: # env grouping
             uid_batch = []
@@ -382,6 +382,15 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 processors=processors,
                 config=config,
             )
+        elif executor_type == "math":
+            self.multiagent_executor: BaseExecutor = MathMultiAgentExecutor(
+                agent_ids=agent_ids,
+                model_ids=model_ids,
+                agents_to_wg_mapping=agents_to_wg_mapping,
+                tokenizers=tokenizers,
+                processors=processors,
+                config=config,
+            )
         else:
             raise ValueError(f"Unknown executor_type '{executor_type}'.")
 
@@ -395,7 +404,7 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
 
         batch_size = len(gen_batch.batch)
 
-        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.get('tools_kwargs', None))
+        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop('env_kwargs', None))
         self.multiagent_executor.reset()
         
         if self.config.env.rollout.n > 0: # env grouping
