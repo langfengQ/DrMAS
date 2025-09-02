@@ -11,6 +11,11 @@ mode="mean_std_norm" # "mean_norm" or "mean_std_norm"
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
 VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
 
+
+mode="mean_std_norm" # "mean_norm" or "mean_std_norm"
+enable_similarity=True # enable similarity-based GiGPO
+similarity_thresh=0.9 # similarity threshold for GiGPO
+
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=gigpo \
     data.train_files=$TRAIN_DATA \
@@ -50,8 +55,9 @@ python3 -m verl.trainer.main_ppo \
     algorithm.use_kl_in_reward=False \
     algorithm.gamma=0.95 \
     algorithm.gigpo.step_advantage_w=1.0 \
-    algorithm.gigpo.sim_thresh=0.8 \
     algorithm.gigpo.mode=$mode \
+    algorithm.gigpo.enable_similarity=$enable_similarity \
+    algorithm.gigpo.similarity_thresh=$similarity_thresh \
     env.env_name=search \
     env.seed=0 \
     env.max_steps=4 \

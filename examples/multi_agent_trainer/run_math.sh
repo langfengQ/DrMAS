@@ -81,7 +81,7 @@ python3 -m verl.trainer.main_ppo \
     algorithm.use_kl_in_reward=False \
     algorithm.gamma=0.985 \
     algorithm.gigpo.step_advantage_w=1.0 \
-    algorithm.gigpo.sim_thresh=0.8 \
+    algorithm.gigpo.similarity_thresh=0.8 \
     algorithm.gigpo.mode=$gigpo_mode \
     env.env_name=math \
     env.seed=0 \

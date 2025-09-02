@@ -1,3 +1,18 @@
+# Copyright 2025 Nanyang Technological University (NTU), Singapore
+# and the verl-agent (GiGPO) team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import asyncio
 import concurrent.futures
 from typing import Any, Dict, List, Tuple
@@ -10,10 +25,9 @@ from copy import deepcopy
 
 class SearchMultiProcessEnv(gym.Env):
     """
-    - env_num  : 分组数（逻辑分片，保留形参以兼容外部调用）
-    - group_n  : 每组环境数
+    - env_num  : Number of groups (logical sharding; keep the parameter for external compatibility)
+    - group_n  : Number of environments per group
     - total_envs = env_num * group_n
-    外部仍按 “一个元素 = 一环境” 的形式传 action / kwargs。
     """
 
     def __init__(
@@ -36,8 +50,8 @@ class SearchMultiProcessEnv(gym.Env):
 
         self._rng = np.random.RandomState(seed)
 
-        # ---------- 关键改动开始 ----------
-        # 1) 把 search_url 统一转成 list
+        # ---------- Key changes start ----------
+        # 1) Normalize search_url into a list
         search_cfg  = env_config.search
         search_urls = search_cfg.search_url
         if not isinstance(search_urls, ListConfig):
@@ -45,10 +59,10 @@ class SearchMultiProcessEnv(gym.Env):
 
         n_clients = len(search_urls)
 
-        # 2) round‑robin 为每个 env 选一个 url
+        # 2) Assign a URL to each env in a round-robin manner
         self.envs = []
         for idx in range(self.batch_size):
-            cfg_i = deepcopy(search_cfg)          # 避免修改原始 config
+            cfg_i = deepcopy(search_cfg)
             cfg_i.search_url = search_urls[idx % n_clients]
             self.envs.append(SearchEnv(cfg_i))
 
@@ -60,13 +74,13 @@ class SearchMultiProcessEnv(gym.Env):
 
     def _sync_reset(self, env, kwargs):
         extras = {
-            "ground_truth": kwargs["search"]["create_kwargs"]["ground_truth"],
+            "ground_truth": kwargs["ground_truth"],
             "max_turns": self.max_steps,
-            "data_source": kwargs["search"]["create_kwargs"].get("data_source", "unknown")
+            "data_source": kwargs.get("data_source", "unknown")
         }
         env.reset(extras)
-        obs = kwargs["search"]["create_kwargs"]["question"]
-        info = {'data_source': kwargs["search"]["create_kwargs"].get("data_source", "unknown")}
+        obs = kwargs["question"]
+        info = {'data_source': kwargs.get("data_source", "unknown")}
         return obs, info
     
     def _sync_step(self, env, action: str):
@@ -88,14 +102,10 @@ class SearchMultiProcessEnv(gym.Env):
 
         pad_n = self.batch_size - len(kwargs)
         dummy_kw = {
-            "search": {
-                "create_kwargs": {
                     "ground_truth": "",
                     "question": "",
                     "data_source": "unkown",
                 }
-            }
-        }
 
         padded_kwargs = list(kwargs) + [dummy_kw] * pad_n
         valid_mask = [True] * len(kwargs) + [False] * pad_n
