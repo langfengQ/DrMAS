@@ -140,15 +140,15 @@ We have released our models on [HuggingFace](https://huggingface.co/collections/
 # Installation
 ## Install veRL
 ```bash
-conda create -n verl-agent python==3.10 -y
-conda activate verl-agent
+conda create -n multiagent python==3.12 -y
+conda activate multiagent
 
 pip3 install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 pip3 install flash-attn==2.7.4.post1 --no-build-isolation
 
 pip3 install -e .
 
-pip3 install vllm==0.8.5
+pip install -r requirements_sglang.txt
 ```
 
 ## Install Supported Environments

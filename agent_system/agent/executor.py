@@ -238,6 +238,7 @@ class SearchMultiAgentExecutor(BaseExecutor):
 
         self.output_agent = "Search Agent"
         self.critic_agent = "Critic Agent"
+        self.reflexion_agent = "Reflexion Agent"
         self.enable_critic = self.critic_agent in self.agent_order
         # if self.agent_order[-1] != "ActionAgent":
         #     raise ValueError("The last agent must be ActionAgent.")
@@ -251,14 +252,18 @@ class SearchMultiAgentExecutor(BaseExecutor):
         if self.enable_critic:
             approved_vector = np.zeros(len(gen_batch), dtype=bool)  # Vector to track if the action is approved
 
-        for num in range(self.max_loop_num):
+        for loop_i in range(self.max_loop_num):
             # run agents sequentially, passing observation and batch
             for name in self.agent_order:
 
+                if name == self.reflexion_agent:
+                    if step == 1 or loop_i != 0:
+                        continue
+
                 # skip last time for critic agent
-                if num == self.max_loop_num - 1 and name == self.critic_agent:
+                if name == self.critic_agent and loop_i == self.max_loop_num - 1:
                     break
-                
+                    
                 agent_active_mask = np.ones(len(gen_batch), dtype=bool)
                 if self.random_dropout and name != self.output_agent:
                     agent_active_mask = np.random.binomial(1, self.random_dropout_ratio, size=len(gen_batch)).astype(bool)
@@ -273,8 +278,6 @@ class SearchMultiAgentExecutor(BaseExecutor):
                                                                 team_context=team_context, 
                                                                 actor_rollout_wg=actor_rollout_wg, 
                                                                 step=step)
-                if batch is None:
-                    continue  # skip if the agent did not produce a batch
                 
                 team_context = update_team_context(name, team_context, text_repsonses, agent_active_mask)
                 # save the batch to the multiagent buffer
