@@ -91,7 +91,7 @@ class SearchEnv(BaseTextEnv):
 
         if done:
             return BaseTextEnvStepOutput(
-                observations=[], reward=reward, done=done, metadata={"data_source": self.data_source}, postprocessed_action=action
+                observations=[], reward=reward, done=done, metadata={"data_source": self.data_source, "tool_calling": False}, postprocessed_action=action
             )
 
         try:
@@ -112,6 +112,7 @@ class SearchEnv(BaseTextEnv):
             new_obs = None
 
         info = {
+            "tool_calling": True,
             "tool_group": "SearchToolGroup",
             "tool_name": "search",
             "tool_input": query,
