@@ -703,6 +703,8 @@ class RayPPOTrainer:
     def _validate(self):
         reward_tensor_lst = []
         data_source_lst = []
+        tool_calling_list = []
+        traj_uid_list = []
         success_rate_dict = {}
 
         # Lists to collect samples for the table
