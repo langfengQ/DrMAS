@@ -1,14 +1,12 @@
 set -x
-
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-export WANDB_API_KEY=d65108a54043949f2e975c92c7d2089c414439bf
+export CUDA_VISIBLE_DEVICES=2,3,4,5
 
 agent_ids='["Math Agent"]'
 # "Reflexion Agent"
 # "Search Agent"
 # "Critic Agent"
 
-model_ids='["Qwen/Qwen2.5-3B-Instruct"]'
+model_ids='["Qwen/Qwen2.5-7B-Instruct"]'
 model_sharing=False
 random_dropout=False
 random_dropout_ratio=0.5
@@ -17,16 +15,15 @@ random_dropout_ratio=0.5
 # "Qwen/Qwen3-4B-Instruct-2507"
 # "Qwen/Qwen2.5-1.5B-Instruct"
 
-executor_type=math
+orchestra_type=math
 use_agent_memory=False
 
 train_data_size=256
 val_data_size=512
 group_size=16
-ppo_mini_update_num=32
+ppo_mini_update_num=16
 
 algorithm=grpo
-gigpo_mode=mean_std_norm # "mean_norm" or "mean_std_norm"
 
 max_prompt_length=2000
 max_response_length=4000
@@ -38,11 +35,11 @@ combined_tag=$(paste -d_ <(echo "$agent_name_tag") <(echo "$model_name_tag") | p
 
 dropout_tag=$([[ "${random_dropout,,}" == "true" ]] && printf 'dropout%s' "${random_dropout_ratio}" || printf '%s' 'nodropout')
 
-# experiment_name="${algorithm}_bs${train_data_size}_${group_size}group_${ppo_mini_update_num}update_${max_prompt_length}prompt_${max_response_length}res_${dropout_tag}_share${model_sharing}_${combined_tag}"
-experiment_name="${algorithm}_bs${train_data_size}_${group_size}group_${ppo_mini_update_num}update_${max_prompt_length}prompt_${max_response_length}res_${dropout_tag}_share${model_sharing}_qwen2.5_3b_it"
+experiment_name="${algorithm}_bs${train_data_size}_${group_size}group_${ppo_mini_update_num}update_${max_prompt_length}prompt_${max_response_length}res_${dropout_tag}_share${model_sharing}_${combined_tag}"
+# experiment_name="${algorithm}_bs${train_data_size}_${group_size}group_${ppo_mini_update_num}update_${max_prompt_length}prompt_${max_response_length}res_${dropout_tag}_share${model_sharing}_qwen2.5_3b_it"
 
-TRAIN_DATA="/data/langfeng/data/deepscaler_math/train.parquet"
-VAL_DATA="/data/langfeng/data/deepscaler_math/test.parquet"
+TRAIN_DATA="/mnt/raid/data/langf/data/deepscaler_math/train.parquet"
+VAL_DATA="/mnt/raid/data/langf/data/deepscaler_math/test.parquet"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
@@ -69,8 +66,8 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
-    actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+    actor_rollout_ref.rollout.name=sglang \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
@@ -79,17 +76,13 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     algorithm.use_kl_in_reward=False \
-    algorithm.gamma=0.985 \
-    algorithm.gigpo.step_advantage_w=1.0 \
-    algorithm.gigpo.similarity_thresh=0.8 \
-    algorithm.gigpo.mode=$gigpo_mode \
     env.env_name=math \
     env.seed=0 \
     env.rollout.n=$group_size \
     agent.agent_ids="$agent_ids" \
     agent.model_ids="$model_ids" \
     agent.model_sharing=$model_sharing \
-    agent.executor_type=$executor_type \
+    agent.orchestra_type=$orchestra_type \
     agent.use_agent_memory=$use_agent_memory \
     agent.random_dropout=$random_dropout \
     agent.random_dropout_ratio=$random_dropout_ratio \
@@ -97,7 +90,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='multiagent_math' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \
     trainer.test_freq=20 \

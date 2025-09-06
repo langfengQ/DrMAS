@@ -292,7 +292,7 @@ agent: # only for multi-agent training
   agent_ids: ["Reflexion Agent", "Action Agent", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "Action Agent", "Memory Agent"]
   model_ids: ["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct"]
   model_sharing: True 
-  executor_type: chain
+  orchestra_type: chain
   use_agent_memory: False
   random_dropout: False
   random_dropout_ratio: 0.2

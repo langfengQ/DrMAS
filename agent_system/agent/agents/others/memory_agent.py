@@ -3,7 +3,7 @@ from verl import DataProto
 from transformers import PreTrainedTokenizer
 from agent_system.multi_turn_rollout.utils import preprocess_batch
 from agent_system.agent.registry import AgentRegistry
-from agent_system.agent.base import BaseAgent
+from agent_system.agent.agents.base import BaseAgent
 from agent_system.agent.utils import general_projection
 import numpy as np
 

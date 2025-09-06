@@ -16,20 +16,20 @@ random_dropout_ratio=0.5
 # "Qwen/Qwen3-4B-Instruct-2507"
 # "Qwen/Qwen2.5-1.5B-Instruct"
 
-executor_type=search
+orchestra_type=search
 use_agent_memory=False
 
 train_data_size=256
 val_data_size=512
 group_size=5
-max_turn=3
+max_turn=4
 ppo_mini_update_num=10
 
-algorithm=gigpo
+algorithm=grpo
 gigpo_mode=mean_std_norm # "mean_norm" or "mean_std_norm"
 
 max_prompt_length=4096
-max_response_length=1024
+max_response_length=512
 
 model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
 agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
@@ -53,7 +53,7 @@ python3 -m verl.trainer.main_ppo \
     data.val_batch_size=$val_data_size \
     data.max_prompt_length=$max_prompt_length \
     data.max_response_length=$max_response_length \
-    data.filter_overlong_prompts=True \
+    data.filter_overlong_prompts=False \
     data.truncation='left' \
     data.return_raw_chat=True \
     actor_rollout_ref.model.path=None \
@@ -81,10 +81,6 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     algorithm.use_kl_in_reward=False \
-    algorithm.gamma=0.95 \
-    algorithm.gigpo.step_advantage_w=1.0 \
-    algorithm.gigpo.similarity_thresh=0.95 \
-    algorithm.gigpo.mode=$gigpo_mode \
     env.env_name=search \
     env.seed=0 \
     env.search.search_url='http://127.0.0.1:7856/retrieve' \
@@ -94,7 +90,7 @@ python3 -m verl.trainer.main_ppo \
     agent.agent_ids="$agent_ids" \
     agent.model_ids="$model_ids" \
     agent.model_sharing=$model_sharing \
-    agent.executor_type=$executor_type \
+    agent.orchestra_type=$orchestra_type \
     agent.use_agent_memory=$use_agent_memory \
     agent.random_dropout=$random_dropout \
     agent.random_dropout_ratio=$random_dropout_ratio \

@@ -6,6 +6,7 @@ from transformers import PreTrainedTokenizer
 import uuid
 from agent_system.multi_turn_rollout.utils import to_list_of_dict, torch_to_numpy, filter_group_data, preprocess_batch
 from agent_system.environments import EnvironmentManagerBase
+from agent_system.agent import BaseOrchestra
 from typing import List, Dict, Any, Optional
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 
@@ -332,14 +333,12 @@ class TrajectoryCollector:
         
         return gen_batch_output
 
-
-from agent_system.agent import *
 # =============================================================================
 # Multi‑Agent collector orchestrating a *team* of agents
 # =============================================================================
 class MultiAgentTrajectoryCollector(TrajectoryCollector):
     """Trajectory collector that *delegates* action generation to a
-    user‑configurable :class:`BaseExecutor` (chain, hierarchy, etc.)."""
+    user‑configurable :class:`BaseOrchestra` (chain, hierarchy, etc.)."""
 
     # ------------------------------------------------------------------
     def __init__(
@@ -353,9 +352,9 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
 
         agent_ids = config.agent.agent_ids
         model_ids = config.agent.model_ids
-        executor_type = config.agent.executor_type
+        orchestra_type = config.agent.orchestra_type
         print("agent_ids: ", agent_ids)
-        print("executor_type: ", executor_type)
+        print("orchestra_type: ", orchestra_type)
 
         agents_to_wg_mapping = {}
         for wg_id, agents in wg_to_agents_mapping.items():
@@ -363,35 +362,21 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 agent_id = a['agent_id']
                 agents_to_wg_mapping[agent_id] = wg_id
 
-        if executor_type == "chain":
-            self.multiagent_executor: BaseExecutor = MultiAgentChainExecutor(
-                agent_ids=agent_ids,
-                model_ids=model_ids,
-                agents_to_wg_mapping=agents_to_wg_mapping,
-                tokenizers=tokenizers,
-                processors=processors,
-                config=config,
-            )
-        elif executor_type == "search":
-            self.multiagent_executor: BaseExecutor = SearchMultiAgentExecutor(
-                agent_ids=agent_ids,
-                model_ids=model_ids,
-                agents_to_wg_mapping=agents_to_wg_mapping,
-                tokenizers=tokenizers,
-                processors=processors,
-                config=config,
-            )
-        elif executor_type == "math":
-            self.multiagent_executor: BaseExecutor = MathMultiAgentExecutor(
-                agent_ids=agent_ids,
-                model_ids=model_ids,
-                agents_to_wg_mapping=agents_to_wg_mapping,
-                tokenizers=tokenizers,
-                processors=processors,
-                config=config,
-            )
+        if orchestra_type == "search":
+            from agent_system.agent.orchestra.search import SearchMultiAgentOrchestra as orchestra
+        elif orchestra_type == "math":
+            from agent_system.agent.orchestra.math import MathMultiAgentOrchestra as orchestra
         else:
-            raise ValueError(f"Unknown executor_type '{executor_type}'.")
+            raise ValueError(f"Unknown orchestra_type '{orchestra_type}'.")
+
+        self.multiagent_orchestra: BaseOrchestra = orchestra(
+            agent_ids=agent_ids,
+            model_ids=model_ids,
+            agents_to_wg_mapping=agents_to_wg_mapping,
+            tokenizers=tokenizers,
+            processors=processors,
+            config=config,
+        )
 
     # ------------------------------------------------------------------
     def vanilla_multi_turn_loop(
@@ -404,7 +389,7 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         batch_size = len(gen_batch.batch)
 
         obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop('env_kwargs', None))
-        self.multiagent_executor.reset()
+        self.multiagent_orchestra.reset()
         
         if self.config.env.rollout.n > 0: # env grouping
             uid_batch = []
@@ -427,7 +412,7 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         for _step in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
             ###############################
-            text_actions, multiagent_batch_buffer = self.multiagent_executor.run(
+            text_actions, multiagent_batch_buffer = self.multiagent_orchestra.run(
                 gen_batch=gen_batch,
                 env_obs=obs,
                 actor_rollout_wgs=actor_rollout_wg,
