@@ -29,7 +29,7 @@ class SearchAgent(BaseAgent):
     def __init__(self, wg_id: str, tokenizer: PreTrainedTokenizer, processor, config: Any):
         super().__init__("Search Agent", PROMPT, wg_id=wg_id, tokenizer=tokenizer, processor=processor, config=config)
     
-    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
+    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, agent_active_mask, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
         obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
@@ -38,7 +38,7 @@ class SearchAgent(BaseAgent):
                                     tokenizer=self.tokenizer, 
                                     processor=self.processor,
                                     )
-        batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, gen_batch.meta_info)
+        batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, agent_active_mask, gen_batch.meta_info)
         text_repsonses, valids = search_projection(text_repsonses, check_think_tag=False)
         batch.non_tensor_batch['is_action_valid'] = valids
         batch.non_tensor_batch['env_step'] = np.array([step] * len(text_repsonses), dtype=object)

@@ -80,7 +80,7 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         #     raise ValueError("The last agent must be ActionAgent.")
         self.max_loop_num = 2
 
-    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
+    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, active_masks: np.ndarray, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
         # clear and reset multiagent batch buffer
         self.reset_buffer()
         text_actions, team_context, env_obs = self.initialize_context(env_obs)
@@ -103,6 +103,8 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
                 agent_active_mask = np.ones(len(gen_batch), dtype=bool)
                 if self.random_dropout and name != self.output_agent:
                     agent_active_mask = np.random.binomial(1, self.random_dropout_ratio, size=len(gen_batch)).astype(bool)
+
+                agent_active_mask = np.logical_and(agent_active_mask, active_masks).astype(bool)
                 
                 if self.enable_critic:
                     # AND for agent_active_mask and (not approved_vector)
@@ -112,12 +114,14 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
                 batch, text_repsonses = self.agents[name].call(gen_batch=gen_batch, 
                                                                 env_obs=env_obs, 
                                                                 team_context=team_context, 
-                                                                actor_rollout_wg=actor_rollout_wg, 
-                                                                step=step)
+                                                                actor_rollout_wg=actor_rollout_wg,
+                                                                agent_active_mask=agent_active_mask, 
+                                                                step=step,
+                                                                )
                 
                 team_context = update_team_context(name, team_context, text_repsonses, agent_active_mask)
                 # save the batch to the multiagent buffer
-                self.save_to_buffer(name, batch, agent_active_mask)
+                self.save_to_buffer(name, batch)
 
                 if name == self.critic_agent and self.enable_critic:
                     approved_vector = self.agents[self.critic_agent].update_approved_vector(text_repsonses, approved_vector, agent_active_mask)

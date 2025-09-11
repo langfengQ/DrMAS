@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Tuple
 import copy
 from verl import DataProto
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
+from verl.protocol import extract_dataproto_via_active_mask, restore_dataproto_via_active_mask
 from transformers import PreTrainedTokenizer
 import numpy as np
 
@@ -50,7 +51,7 @@ class BaseAgent:
         return obs
 
 
-    def _generate_with_llm(self, batch: DataProto, actor_rollout_wg, meta_info) -> Tuple[DataProto, List[str]]:
+    def _generate_with_llm(self, batch: DataProto, actor_rollout_wg, agent_active_mask: np.ndarray, meta_info) -> Tuple[DataProto, List[str]]:
         """Helper: prompt → input_ids → actor_rollout_wg → decoded str."""
         batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
         non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
@@ -66,12 +67,16 @@ class BaseAgent:
         )
 
         batch_input.meta_info = meta_info
-
+        
+        # extract activate data
+        batch_input_extracted = extract_dataproto_via_active_mask(batch_input, agent_active_mask)
         # pad to be divisible by dp_size
-        batch_input_padded, pad_size = pad_dataproto_to_divisor(batch_input, actor_rollout_wg.world_size)
+        batch_input_padded, pad_size = pad_dataproto_to_divisor(batch_input_extracted, actor_rollout_wg.world_size)
         batch_output_padded = actor_rollout_wg.generate_sequences(batch_input_padded)
-        # # unpad
-        batch_output = unpad_dataproto(batch_output_padded, pad_size=pad_size)
+        # unpad
+        batch_output_extracted = unpad_dataproto(batch_output_padded, pad_size=pad_size)
+        # restorr
+        batch_output = restore_dataproto_via_active_mask(batch_output_extracted, agent_active_mask)
 
         batch = batch.union(batch_output)
         
@@ -79,6 +84,7 @@ class BaseAgent:
 
         # insert model name
         batch.non_tensor_batch['wg_id'] = np.array([self.wg_id] * len(batch), dtype=object)
+        batch.non_tensor_batch['agent_active_mask'] = agent_active_mask
 
         return batch, text_repsonses
 
@@ -88,6 +94,7 @@ class BaseAgent:
         env_obs: Dict[str, Any],
         team_context: List[str],
         actor_rollout_wg,
+        agent_active_mask,
         step: int,
     ) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a response based on the observation and the batch.

@@ -416,6 +416,7 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 gen_batch=gen_batch,
                 env_obs=obs,
                 actor_rollout_wgs=actor_rollout_wg,
+                active_masks=active_masks,
                 step=_step+1
             )
             next_obs, rewards, dones, infos = envs.step(text_actions)

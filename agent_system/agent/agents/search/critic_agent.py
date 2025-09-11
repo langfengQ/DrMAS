@@ -37,7 +37,7 @@ class CriticAgent(BaseAgent):
         self.start_tag = "<critic>"
         self.end_tag = "</critic>"
 
-    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, step: int) -> Tuple[DataProto, List[str], List[str]]:
+    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, agent_active_mask, step: int) -> Tuple[DataProto, List[str], List[str]]:
         """Generate a summary of the conversation history."""
         obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
@@ -46,7 +46,7 @@ class CriticAgent(BaseAgent):
                                     tokenizer=self.tokenizer, 
                                     processor=self.processor,
                                     )
-        batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, gen_batch.meta_info)
+        batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, agent_active_mask, gen_batch.meta_info)
         text_repsonses, valids = general_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag, check_think_tag=True, return_whole_response=True)
         batch.non_tensor_batch['is_action_valid'] = valids
         batch.non_tensor_batch['env_step'] = np.array([step] * len(text_repsonses), dtype=object)

@@ -73,12 +73,8 @@ class BaseOrchestra:
         """Clear the multiagent batch buffer before each run."""
         self.multiagent_batch_buffer.clear()
 
-    def save_to_buffer(self, name: str, batch: DataProto, agent_active_mask: Optional[np.ndarray] = None):
+    def save_to_buffer(self, name: str, batch: DataProto):
         """Save new batch to the multiagent buffer."""
-        if agent_active_mask is None:
-            agent_active_mask = np.ones(len(batch), dtype=bool)
-
-        batch.non_tensor_batch['agent_active_mask'] = agent_active_mask
         self.multiagent_batch_buffer.append({
             "agent_id": name,
             "batch": batch,
@@ -107,6 +103,7 @@ class BaseOrchestra:
         gen_batch: DataProto,
         env_obs: Dict[str, Any],
         actor_rollout_wgs,
+        active_masks,
         step: int,
     ) -> Tuple[List[str], Dict[str, DataProto]]:
         """Run the orchestra with the given batch and environment observations.
