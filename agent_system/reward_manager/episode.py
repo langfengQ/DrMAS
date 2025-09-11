@@ -85,8 +85,8 @@ class EpisodeRewardManager:
 
             if already_print[tag] < self.num_examine and np.random.random() < 0.1:
                 already_print[tag] += 1
-                print(f"[{agent_id}][prompt]", prompt_str)
-                print(f"[{agent_id}][response]", response_str)
+                print(f"[{data_source}][{agent_id}][prompt]", prompt_str)
+                print(f"[{data_source}][{agent_id}][response]", response_str)
                 print("[score]", score)
 
         if return_dict:
