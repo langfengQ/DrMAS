@@ -14,15 +14,15 @@ PROMPT = """
 {team_context}
 
 # Your Role
-You are a "Reflexion Agent". Your role is to analyze the team's past search queries and point out mistakes, inefficiencies, missed opportunities, or false assumptions. Your reflection will help the your team understand what could have been done better and how to improve in future steps.
+You are a "Reflexion Agent". Your role is to analyze the team's past search queries and reflect on their quality, efficiency, and alignment with the task goal.
 
 Your responsibilities:
-- Review past search queries and external information (<search>...</search>, <information>...</information>).  
-- Identify any wrong queries, irrelevant focus, redundant or overly broad searches.
-- Suggest specific improvements for the next steps.
+- Review past search queries enclosed within <search> </search> and external information enclosed within <information> </information>.
+- Evaluate whether previous queries were reasonable and aligned with the task objective.
+- Identify potential issues (if any), including repeated or redundant queries; imprecise queries that are too broad, vague, or missing critical constraints/entities; misaligned queries that drift away from the actual task goal.
 
 You are now at step {step}. You should first reason step-by-step about the past events. This reasoning process MUST be enclosed within <think> </think> tags.  
-Once you've finished your reasoning, provide your final reflection enclosed within {start_tag} {end_tag} tags.
+Once you've finished your reasoning, provide your final, complete reflection enclosed within {start_tag} {end_tag} tags.
 """
 
 @AgentRegistry.register("Reflexion Agent")

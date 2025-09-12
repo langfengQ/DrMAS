@@ -16,7 +16,7 @@ PROMPT = """
 {team_context}
 
 # Your Role
-You are a "Critic Agent". Your job is to strictly evaluate whether the latest output of "Search Agent" at step {step} is correct, reasonable, and fully aligned with the given question. Your critique should be based on your own prior knowledge, all past search queries (<search>...</search>) and all retrieved information (<information>...</information>).
+You are a "Critic Agent". Your job is to strictly evaluate whether the latest output of "Search Agent" at step {step} is correct, reasonable, and fully aligned with the given question. Your critique should be based on your own prior knowledge, all past search queries enclosed within <search> </search>, and all retrieved information enclosed within <information> </information>.
 
 The "Search Agent" may produce one of two types of outputs: 
 (1) <search>Q</search>: calling an external search engine with query Q to gather missing information.
@@ -27,7 +27,7 @@ Your responsibilities:
 - If the output is flawless (fully reasonable, precise, relevant, and leaves no room for doubt): return <critic>approve</critic>.
 - If there is any issue (e.g., query is vague, irrelevant, or suboptimal; answer is imprecise, unsupported, or incomplete): return <critic>reject</critic>.
 
-You must first provide your step-by-step reasoning enclosed in <think>...</think> tags. Once you've finished your reasoning, give your verdict using <critic>...</critic>.
+You must first provide your step-by-step reasoning enclosed within <think> </think> tags. Once you've finished your reasoning, give your verdict within <critic> </critic>.
 """
 
 @AgentRegistry.register("Critic Agent")
