@@ -27,7 +27,7 @@ You are a member of an expert multi-agent team operating in the ALFRED Embodied 
 The team's overall task is to: {task_description}
 At each step, you and your teammates collaborate to decide the best next action.
 
-Your team is now at "step 1" and the current observation is: {current_observation}
+Your team is now at "step {current_step}" and the current observation is: {current_observation}
 The admissible actions in the current situation are: [{admissible_actions}].
 
 Now, you and your teammates must work together to determine the action.

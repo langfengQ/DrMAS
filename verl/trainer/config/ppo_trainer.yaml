@@ -41,6 +41,8 @@ actor_rollout_ref:
     trust_remote_code: False
   actor:
     strategy: fsdp  # [fsdp, fsdp2], This is for backward-compatibility
+    use_adaptive_ppo_mini_batch_size: False
+    ppo_mini_update_num: 10
     ppo_mini_batch_size: 256
     ppo_micro_batch_size: null # will be deprecated, use ppo_micro_batch_size_per_gpu
     ppo_micro_batch_size_per_gpu: null
@@ -247,6 +249,8 @@ algorithm:
   gigpo:
     step_advantage_w: 1.0
     mode: "mean_norm" # "mean_norm" or "mean_std_norm"
+    enable_similarity: False # whether to use similarity-based anchor state grouping in GiGPO (supported for text-only tasks)
+    similarity_thresh: 1.0 # similarity threshold for gigpo [0.0, 1.0]
   filter_groups: # DAPO from https://arxiv.org/abs/2503.14476
     enable: False
     max_num_gen_batches: 10
@@ -283,10 +287,15 @@ ray_init:
   num_cpus: null # `None` means using all CPUs, which might cause hang if limited in systems like SLURM. Please set to a number allowed then.
 
 
-agent:
-  multi_agent: False # True for multi-agent training, False for single-agent training
-  agent_list: ["Reflexion Agent", "Action Agent", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "Action Agent", "Memory Agent"]
-  executor_type: chain
+agent: # only for multi-agent training
+  multi_agent: True # True for multi-agent training, False for single-agent training
+  agent_ids: ["Reflexion Agent", "Action Agent", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "Action Agent", "Memory Agent"]
+  model_ids: ["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct"]
+  model_sharing: True 
+  orchestra_type: chain
+  use_agent_memory: False
+  random_dropout: False
+  random_dropout_ratio: 0.2
 
 
 env:
@@ -305,3 +314,8 @@ env:
   webshop:
     use_small: True
     human_goals: False
+  search:
+    log_requests: false
+    search_url: "http://127.0.0.1:8000/retrieve" # also support multiple urls: ["http://127.0.0.1:8000/retrieve", "http://127.0.0.1:8001/retrieve"]
+    topk: 3
+    timeout: 60

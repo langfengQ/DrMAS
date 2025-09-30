@@ -130,11 +130,12 @@ class ActorRolloutRefWorker(Worker):
         self._is_lora = self._lora_rank > 0
 
         self.role = role
-        assert self.role in ["actor", "rollout", "ref", "actor_rollout", "actor_rollout_ref"]
+        role_prefix = self.role.split("/")[0]
+        assert role_prefix in ["actor", "rollout", "ref", "actor_rollout", "actor_rollout_ref"]
 
-        self._is_actor = self.role in ["actor", "actor_rollout", "actor_rollout_ref"]
-        self._is_rollout = self.role in ["rollout", "actor_rollout", "actor_rollout_ref"]
-        self._is_ref = self.role in ["ref", "actor_rollout_ref"]
+        self._is_actor = role_prefix in ["actor", "actor_rollout", "actor_rollout_ref"]
+        self._is_rollout = role_prefix in ["rollout", "actor_rollout", "actor_rollout_ref"]
+        self._is_ref = role_prefix in ["ref", "actor_rollout_ref"]
 
         self._is_offload_param = False
         self._is_offload_optimizer = False
@@ -595,6 +596,11 @@ class ActorRolloutRefWorker(Worker):
         # Support all hardwares
         data = data.to(get_torch_device().current_device())
 
+        wg_ids = data.non_tensor_batch['wg_id']
+        if not all(wg_id == wg_ids[0] for wg_id in wg_ids):
+            raise ValueError(f"All model ids must be the same, but got {wg_ids}")
+        wg_id = wg_ids[0]
+        
         assert self._is_actor
         if self._is_offload_param:
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
@@ -604,22 +610,22 @@ class ActorRolloutRefWorker(Worker):
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data=data)
             # perform training
-            with Timer(name="update_policy", logger=None) as timer:
+            with Timer(name=f"update_policy_{wg_id}", logger=None) as timer:
                 metrics = self.actor.update_policy(data=data)
             delta_time = timer.last
-            global_num_tokens = data.meta_info["global_token_num"]
+            global_num_tokens = data.meta_info[f"{wg_id}/global_token_num"]
             estimated_flops, promised_flops = self.flops_counter.estimate_flops(global_num_tokens, delta_time)
-            metrics["perf/mfu/actor"] = estimated_flops * self.config.actor.ppo_epochs / promised_flops / self.world_size
-            metrics["perf/max_memory_allocated_gb"] = get_torch_device().max_memory_allocated() / (1024**3)
-            metrics["perf/max_memory_reserved_gb"] = get_torch_device().max_memory_reserved() / (1024**3)
-            metrics["perf/cpu_memory_used_gb"] = psutil.virtual_memory().used / (1024**3)
+            metrics[f"perf/{wg_id}/mfu/actor"] = estimated_flops * self.config.actor.ppo_epochs / promised_flops / self.world_size
+            metrics[f"perf/{wg_id}/max_memory_allocated_gb"] = get_torch_device().max_memory_allocated() / (1024**3)
+            metrics[f"perf/{wg_id}/max_memory_reserved_gb"] = get_torch_device().max_memory_reserved() / (1024**3)
+            metrics[f"perf/{wg_id}/cpu_memory_used_gb"] = psutil.virtual_memory().used / (1024**3)
 
             lr = self.actor_lr_scheduler.get_last_lr()[0]
-            metrics["actor/lr"] = lr
+            metrics[f"actor/{wg_id}/lr"] = lr
             self.actor_lr_scheduler.step()
 
             # TODO: here, we should return all metrics
-            output = DataProto(meta_info={"metrics": metrics})
+            output = DataProto(meta_info={f"{wg_id}/metrics": metrics})
 
             output = self.ulysses_sharding_manager.postprocess_data(data=output)
             output = output.to("cpu")

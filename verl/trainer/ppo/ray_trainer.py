@@ -62,7 +62,8 @@ from verl.utils.tracking import ValidationGenerationsLogger
 from verl.workers.rollout.async_server import AsyncLLMServerManager
 from gigpo import core_gigpo
 
-from agent_system.multi_turn_rollout import TrajectoryCollector, adjust_batch
+from agent_system.multi_turn_rollout import TrajectoryCollector, adjust_batch, split_batch_by_wg_ids, combine_batches
+from agent_system.agent.utils import build_wg_ids, normalize_agent_id, normalize_model_id
 
 WorkerType = Type[Worker]
 
@@ -241,7 +242,7 @@ def compute_response_mask(data: DataProto):
     return attention_mask[:, -response_length:]
 
 
-def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, step_advantage_w=1.0, gigpo_mode="mean_std_norm", **kwargs):
+def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, step_advantage_w=1.0, gigpo_mode="mean_std_norm", gigpo_enable_similarity=False, gigpo_similarity_thresh=0.95, **kwargs):
     """Compute advantage estimates for policy optimization.
 
     This function computes advantage estimates using various estimators like GAE, GRPO, REINFORCE++, etc.
@@ -352,6 +353,8 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             traj_index=data.non_tensor_batch['traj_uid'],
             step_advantage_w=step_advantage_w,
             mode=gigpo_mode,
+            enable_similarity=gigpo_enable_similarity,
+            similarity_thresh=gigpo_similarity_thresh,
             )
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
@@ -391,11 +394,13 @@ class RayPPOTrainer:
     def __init__(
         self,
         config,
-        tokenizer,
+        tokenizers,
+        default_wg,
+        wg_to_agents_mapping: dict[str, list[dict[str, str]]],
         role_worker_mapping: dict[Role, WorkerType],
         resource_pool_manager: ResourcePoolManager,
         ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
-        processor=None,
+        processors=None,
         reward_fn=None,
         val_reward_fn=None,
         train_dataset: Optional[Dataset] = None,
@@ -409,8 +414,8 @@ class RayPPOTrainer:
     ):
         """Initialize distributed PPO trainer with Ray backend."""
 
-        self.tokenizer = tokenizer
-        self.processor = processor
+        self.tokenizers = tokenizers
+        self.processors = processors
         self.config = config
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
@@ -421,8 +426,19 @@ class RayPPOTrainer:
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         assert self.hybrid_engine, "Currently, only support hybrid engine"
 
-        if self.hybrid_engine:
-            assert Role.ActorRollout in role_worker_mapping, f"{role_worker_mapping.keys()=}"
+        # if self.hybrid_engine:
+        #     assert Role.ActorRollout in role_worker_mapping, f"{role_worker_mapping.keys()=}"
+
+        self.multi_agent = self.config.agent.multi_agent
+        assert self.multi_agent
+        self.agent_ids = self.config.agent.agent_ids
+        self.model_ids = self.config.agent.model_ids
+        assert len(self.agent_ids) == len(self.model_ids), "agent_ids and model_ids must have the same length"
+
+        self.model_sharing = self.config.agent.model_sharing
+        self.wg_to_agents_mapping = wg_to_agents_mapping
+
+        self.default_wg = default_wg
 
         self.role_worker_mapping = role_worker_mapping
         self.resource_pool_manager = resource_pool_manager
@@ -579,9 +595,9 @@ class RayPPOTrainer:
         from verl.trainer.main_ppo import create_rl_dataset, create_rl_sampler
 
         if train_dataset is None:
-            train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizer, self.processor)
+            train_dataset = create_rl_dataset(self.config.data.train_files, self.config.data, self.tokenizers[self.default_wg], self.processors[self.default_wg])
         if val_dataset is None:
-            val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
+            val_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizers[self.default_wg], self.processors[self.default_wg])
         self.train_dataset, self.val_dataset = train_dataset, val_dataset
 
         if train_sampler is None:
@@ -687,6 +703,8 @@ class RayPPOTrainer:
     def _validate(self):
         reward_tensor_lst = []
         data_source_lst = []
+        tool_calling_list = []
+        traj_uid_list = []
         success_rate_dict = {}
 
         # Lists to collect samples for the table
@@ -707,7 +725,7 @@ class RayPPOTrainer:
             # Store original inputs
             input_ids = test_batch.batch["input_ids"]
             # TODO: Can we keep special tokens except for padding tokens?
-            input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
+            input_texts = [self.tokenizers[self.default_wg].decode(ids, skip_special_tokens=True) for ids in input_ids]
             sample_inputs.extend(input_texts)
 
             batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
@@ -718,14 +736,16 @@ class RayPPOTrainer:
                 non_tensor_batch_keys_to_pop.append("raw_prompt")
             if "tools_kwargs" in test_batch.non_tensor_batch:
                 non_tensor_batch_keys_to_pop.append("tools_kwargs")
+            if "env_kwargs" in test_batch.non_tensor_batch:
+                non_tensor_batch_keys_to_pop.append("env_kwargs")
             test_gen_batch = test_batch.pop(
                 batch_keys=batch_keys_to_pop,
                 non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
             )
 
             test_gen_batch.meta_info = {
-                "eos_token_id": self.tokenizer.eos_token_id,
-                "pad_token_id": self.tokenizer.pad_token_id,
+                "eos_token_id": self.tokenizers[self.default_wg].eos_token_id,
+                "pad_token_id": self.tokenizers[self.default_wg].pad_token_id,
                 "recompute_log_prob": False,
                 "do_sample": self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 "validate": True,
@@ -751,7 +771,8 @@ class RayPPOTrainer:
             test_batch = test_output_gen_batch
             # Store generated outputs
             output_ids = test_output_gen_batch.batch["responses"]
-            output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+            wg_ids = test_output_gen_batch.non_tensor_batch["wg_id"]
+            output_texts = [self.tokenizers[model].decode(ids, skip_special_tokens=True) for ids, model in zip(output_ids, wg_ids)]
             sample_outputs.extend(output_texts)
 
             # test_batch = test_batch.union(test_output_gen_batch)
@@ -764,6 +785,8 @@ class RayPPOTrainer:
 
             reward_tensor_lst.append(reward_tensor)
             data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
+            tool_calling_list.append(test_output_gen_batch.non_tensor_batch['tool_callings'])
+            traj_uid_list.append(test_output_gen_batch.non_tensor_batch['traj_uid'])
 
             # success rate
             for k in test_batch.non_tensor_batch.keys():
@@ -779,6 +802,8 @@ class RayPPOTrainer:
 
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
         data_sources = np.concatenate(data_source_lst, axis=0)
+        tool_callings = np.concatenate(tool_calling_list, axis=0)
+        traj_uids = np.concatenate(traj_uid_list, axis=0)
         success_rate = {k: np.mean(v) for k, v in success_rate_dict.items()}
 
         # evaluate test_score based on data source
@@ -789,9 +814,27 @@ class RayPPOTrainer:
                 data_source_reward[data_source] = []
             data_source_reward[data_source].append(reward_tensor[i].item())
 
+        # evaluate tool call based on data source
+        # the values in tool_callings represent the tool call count for each trajectory; however, since the batch is expanded by step, we only need to take one value for each unique trajectories.
+        data_source_tool_calling = {}
+        unique_traj_uid, unique_idx = np.unique(traj_uids, return_index=True)
+        unique_data_sources = data_sources[unique_idx]
+        unique_tool_callings = tool_callings[unique_idx]
+
+        for i in range(unique_tool_callings.shape[0]):
+            data_source = unique_data_sources[i]
+            if data_source not in data_source_tool_calling:
+                data_source_tool_calling[data_source] = []
+            data_source_tool_calling[data_source].append(unique_tool_callings[i].item())
+
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
-            metric_dict[f'val/test_score/{data_source}'] = np.mean(rewards)
+            metric_dict[f'val/{data_source}/test_score'] = np.mean(rewards)
+
+        for data_source, tool_calls in data_source_tool_calling.items():
+            metric_dict[f'val/{data_source}/tool_call_count/mean'] = np.mean(tool_calls)
+            metric_dict[f'val/{data_source}/tool_call_count/max'] = np.max(tool_calls)
+            metric_dict[f'val/{data_source}/tool_call_count/min'] = np.min(tool_calls)
 
         for k, v in success_rate.items():
             metric_dict[f'val/{k}'] = v
@@ -809,15 +852,23 @@ class RayPPOTrainer:
 
         self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
+        # Set configurations for each model
+        wg_configs = {}
+        for wg_id, agents_list in self.wg_to_agents_mapping.items():
+            wg_configs[wg_id] = deepcopy(self.config.actor_rollout_ref)
+            wg_configs[wg_id].model.path = agents_list[0]['model_id']
+
         # create actor and rollout
         if self.hybrid_engine:
-            resource_pool = self.resource_pool_manager.get_resource_pool(Role.ActorRollout)
-            actor_rollout_cls = RayClassWithInitArgs(
-                cls=self.role_worker_mapping[Role.ActorRollout],
-                config=self.config.actor_rollout_ref,
-                role="actor_rollout",
-            )
-            self.resource_pool_to_cls[resource_pool]["actor_rollout"] = actor_rollout_cls
+            for wg_id, agents_list in self.wg_to_agents_mapping.items():
+                resource_pool = self.resource_pool_manager.get_resource_pool(Role.ActorRollout)
+                role_name = "actor_rollout/" + "+".join(normalize_agent_id(agent_model["agent_id"]) for agent_model in agents_list) + "/"
+                actor_rollout_cls = RayClassWithInitArgs(
+                    cls=self.role_worker_mapping[Role.ActorRollout],
+                    config=wg_configs[wg_id],
+                    role=role_name,
+                )
+                self.resource_pool_to_cls[resource_pool][role_name] = actor_rollout_cls
         else:
             raise NotImplementedError
 
@@ -830,8 +881,11 @@ class RayPPOTrainer:
         # create reference policy if needed
         if self.use_reference_policy:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RefPolicy)
-            ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy], config=self.config.actor_rollout_ref, role="ref")
-            self.resource_pool_to_cls[resource_pool]["ref"] = ref_policy_cls
+            for wg_id, agents_list in self.wg_to_agents_mapping.items():
+                role_name = "ref/" + "+".join(normalize_agent_id(agent_model["agent_id"]) for agent_model in agents_list) + "/"
+                # we use the same config for all ref policies
+                ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy], config=wg_configs[wg_id], role=role_name)
+                self.resource_pool_to_cls[resource_pool][role_name] = ref_policy_cls
 
         # create a reward model if reward_fn is None
         if self.use_rm:
@@ -849,7 +903,7 @@ class RayPPOTrainer:
         wg_kwargs = {}  # Setting up kwargs for RayWorkerGroup
         if OmegaConf.select(self.config.trainer, "ray_wait_register_center_timeout") is not None:
             wg_kwargs["ray_wait_register_center_timeout"] = self.config.trainer.ray_wait_register_center_timeout
-
+        
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
             worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
             wg_dict = self.ray_worker_group_cls(resource_pool=resource_pool, ray_cls_with_init=worker_dict_cls, device_name=self.device_name, **wg_kwargs)
@@ -861,42 +915,46 @@ class RayPPOTrainer:
             self.critic_wg.init_model()
 
         if self.use_reference_policy and not self.ref_in_actor:
-            self.ref_policy_wg = all_wg["ref"]
-            self.ref_policy_wg.init_model()
+            self.ref_policy_wg = {}
+            for wg_id, agents_list in self.wg_to_agents_mapping.items():
+                role_name = "ref/" + "+".join(normalize_agent_id(agent_model["agent_id"]) for agent_model in agents_list) + "/"
+                assert role_name in all_wg, f"Role {role_name} not found in all_wg"
+                ref_policy_wg = all_wg[role_name]
+                ref_policy_wg.init_model()
+                self.ref_policy_wg[wg_id] = ref_policy_wg
 
         if self.use_rm:
             self.rm_wg = all_wg["rm"]
             self.rm_wg.init_model()
 
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
-        self.actor_rollout_wg = all_wg["actor_rollout"]
-        self.actor_rollout_wg.init_model()
+        self.actor_rollout_wg = {}
+        for wg_id, agents_list in self.wg_to_agents_mapping.items():
+            role_name = "actor_rollout/" + "+".join(normalize_agent_id(agent_model["agent_id"]) for agent_model in agents_list) + "/"
+            assert role_name in all_wg, f"Role {role_name} not found in all_wg"
+            actor_rollout_wg = all_wg[role_name]
+            actor_rollout_wg.init_model()
 
-        # create async rollout manager and request scheduler
-        self.async_rollout_mode = False
-        if self.config.actor_rollout_ref.rollout.mode == "async":
-            self.async_rollout_mode = True
-            self.async_rollout_manager = AsyncLLMServerManager(
-                config=self.config.actor_rollout_ref,
-                worker_group=self.actor_rollout_wg,
-            )
+            self.actor_rollout_wg[wg_id] = actor_rollout_wg
 
     def _save_checkpoint(self):
         # path: given_path + `/global_step_{global_steps}` + `/actor`
         local_global_step_folder = os.path.join(self.config.trainer.default_local_dir, f"global_step_{self.global_steps}")
 
         print(f"local_global_step_folder: {local_global_step_folder}")
-        actor_local_path = os.path.join(local_global_step_folder, "actor")
 
-        actor_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", "actor")
+        for wg_id in self.wg_to_agents_mapping.keys():
+            actor_local_path = os.path.join(local_global_step_folder, f"actor/{wg_id}")
 
-        remove_previous_ckpt_in_save = self.config.trainer.get("remove_previous_ckpt_in_save", False)
-        if remove_previous_ckpt_in_save:
-            print("Warning: remove_previous_ckpt_in_save is deprecated," + " set max_actor_ckpt_to_keep=1 and max_critic_ckpt_to_keep=1 instead")
-        max_actor_ckpt_to_keep = self.config.trainer.get("max_actor_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
-        max_critic_ckpt_to_keep = self.config.trainer.get("max_critic_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
+            actor_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", f"actor/{wg_id}")
 
-        self.actor_rollout_wg.save_checkpoint(actor_local_path, actor_remote_path, self.global_steps, max_ckpt_to_keep=max_actor_ckpt_to_keep)
+            remove_previous_ckpt_in_save = self.config.trainer.get("remove_previous_ckpt_in_save", False)
+            if remove_previous_ckpt_in_save:
+                print("Warning: remove_previous_ckpt_in_save is deprecated," + " set max_actor_ckpt_to_keep=1 and max_critic_ckpt_to_keep=1 instead")
+            max_actor_ckpt_to_keep = self.config.trainer.get("max_actor_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
+            max_critic_ckpt_to_keep = self.config.trainer.get("max_critic_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
+
+            self.actor_rollout_wg[wg_id].save_checkpoint(actor_local_path, actor_remote_path, self.global_steps, max_ckpt_to_keep=max_actor_ckpt_to_keep)
 
         if self.use_critic:
             critic_local_path = os.path.join(local_global_step_folder, "critic")
@@ -947,11 +1005,12 @@ class RayPPOTrainer:
         print(f"Setting global step to {self.global_steps}")
         print(f"Resuming from {global_step_folder}")
 
-        actor_path = os.path.join(global_step_folder, "actor")
-        critic_path = os.path.join(global_step_folder, "critic")
         # load actor
-        self.actor_rollout_wg.load_checkpoint(actor_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load)
+        for wg_id in self.wg_to_agents_mapping.keys():
+            actor_path = os.path.join(global_step_folder, f"actor/{wg_id}")
+            self.actor_rollout_wg[wg_id].load_checkpoint(actor_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load)
         # load critic
+        critic_path = os.path.join(global_step_folder, "critic")
         if self.use_critic:
             self.critic_wg.load_checkpoint(critic_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load)
 
@@ -964,12 +1023,12 @@ class RayPPOTrainer:
         else:
             print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
 
-    def _balance_batch(self, batch: DataProto, metrics, logging_prefix="global_seqlen"):
+    def _balance_batch(self, batch: DataProto, wg_id, metrics, logging_prefix="global_seqlen"):
         """Reorder the data on single controller such that each dp rank gets similar total tokens"""
         attention_mask = batch.batch["attention_mask"]
         batch_size = attention_mask.shape[0]
         global_seqlen_lst = batch.batch["attention_mask"].view(batch_size, -1).sum(-1).tolist()  # (train_batch_size,)
-        world_size = self.actor_rollout_wg.world_size
+        world_size = self.actor_rollout_wg[wg_id].world_size
         global_partition_lst = get_seqlen_balanced_partitions(global_seqlen_lst, k_partitions=world_size, equal_size=True)
         # reorder based on index. The data will be automatically equally partitioned by dispatch function
         global_idx = torch.tensor([j for partition in global_partition_lst for j in partition])
@@ -1032,6 +1091,8 @@ class RayPPOTrainer:
                     non_tensor_batch_keys_to_pop.append("raw_prompt")
                 if "tools_kwargs" in batch.non_tensor_batch:
                     non_tensor_batch_keys_to_pop.append("tools_kwargs")
+                if "env_kwargs" in batch.non_tensor_batch:
+                    non_tensor_batch_keys_to_pop.append("env_kwargs")
                 gen_batch = batch.pop(
                     batch_keys=batch_keys_to_pop,
                     non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
@@ -1086,17 +1147,29 @@ class RayPPOTrainer:
                         )
                         batch.batch['step_rewards'] = step_rewards_tensor
                     
-                    batch = adjust_batch(self.config, batch)
+                    # multiagent_batch (Dict[str, DataProto]): Dictionary mapping unique_wg_ids to their respective DataProto batches
+                    unique_wg_ids = list(self.wg_to_agents_mapping.keys())
+                    multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
+                    for wg_id in multiagent_batch.keys():
+                        sub_batch = multiagent_batch[wg_id]
+                        sub_batch = adjust_batch(self.config, sub_batch, wg_id=wg_id)
+                        multiagent_batch[wg_id] = sub_batch
+                    
+                        sub_batch.batch["response_mask"] = compute_response_mask(sub_batch)
+                        # balance the number of valid tokens on each dp rank.
+                        # Note that this breaks the order of data inside the batch.
+                        # Please take care when you implement group based adv computation such as GRPO and rloo
+                        if self.config.trainer.balance_batch:
+                            self._balance_batch(sub_batch, wg_id, metrics=metrics, logging_prefix= f"global_seqlen/{wg_id}")
 
-                    batch.batch["response_mask"] = compute_response_mask(batch)
-                    # balance the number of valid tokens on each dp rank.
-                    # Note that this breaks the order of data inside the batch.
-                    # Please take care when you implement group based adv computation such as GRPO and rloo
-                    if self.config.trainer.balance_batch:
-                        self._balance_batch(batch, metrics=metrics)
+                        # compute global_valid tokens
+                        sub_batch.meta_info[f"{wg_id}/global_token_num"] = torch.sum(sub_batch.batch["attention_mask"], dim=-1).tolist()
 
-                    # compute global_valid tokens
-                    batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
+                        multiagent_batch[wg_id] = sub_batch
+
+                    batch: DataProto = combine_batches(multiagent_batch)
+
+                    batch.meta_info[f"global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
 
                     with _timer("reward", timing_raw):
                         # compute reward model score
@@ -1105,55 +1178,66 @@ class RayPPOTrainer:
                             batch = batch.union(reward_tensor)
 
                         if self.config.reward_model.launch_reward_fn_async:
-                            future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer)
+                            future_reward = compute_reward_async.remote(batch, self.config, self.tokenizers)
                         else:
                             reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
+                    multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
                     # recompute old_log_probs
                     with _timer("old_log_prob", timing_raw):
-                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
-                        entropys = old_log_prob.batch["entropys"]
-                        response_masks = batch.batch["response_mask"]
-                        loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
-                        entropy_loss = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
-                        old_log_prob_metrics = {"actor/entropy_loss": entropy_loss.detach().item()}
-                        metrics.update(old_log_prob_metrics)
-                        old_log_prob.batch.pop("entropys")
-                        batch = batch.union(old_log_prob)
+                        for wg_id in multiagent_batch.keys():
+                            sub_batch = multiagent_batch[wg_id]
+                            assert all(wg_id == wg for wg in sub_batch.non_tensor_batch["wg_id"])
+                            old_log_prob = self.actor_rollout_wg[wg_id].compute_log_prob(sub_batch)
+                            entropys = old_log_prob.batch["entropys"]
+                            response_masks = sub_batch.batch["response_mask"]
+                            loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
+                            entropy_loss = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
+                            old_log_prob_metrics = {f"actor/{wg_id}/entropy_loss": entropy_loss.detach().item()}
+                            metrics.update(old_log_prob_metrics)
+                            old_log_prob.batch.pop("entropys")
+                            sub_batch = sub_batch.union(old_log_prob)
 
-                        if "rollout_log_probs" in batch.batch.keys():
-                            # TODO: we may want to add diff of probs too.
-                            rollout_old_log_probs = batch.batch["rollout_log_probs"]
-                            actor_old_log_probs = batch.batch["old_log_probs"]
-                            attention_mask = batch.batch["attention_mask"]
-                            responses = batch.batch["responses"]
-                            response_length = responses.size(1)
-                            response_mask = attention_mask[:, -response_length:]
+                            if "rollout_log_probs" in sub_batch.batch.keys():
+                                # TODO: we may want to add diff of probs too.
+                                rollout_old_log_probs = sub_batch.batch["rollout_log_probs"]
+                                actor_old_log_probs = sub_batch.batch["old_log_probs"]
+                                attention_mask = sub_batch.batch["attention_mask"]
+                                responses = sub_batch.batch["responses"]
+                                response_length = responses.size(1)
+                                response_mask = attention_mask[:, -response_length:]
 
-                            rollout_probs = torch.exp(rollout_old_log_probs)
-                            actor_probs = torch.exp(actor_old_log_probs)
-                            rollout_probs_diff = torch.abs(rollout_probs - actor_probs)
-                            rollout_probs_diff = torch.masked_select(rollout_probs_diff, response_mask.bool())
-                            rollout_probs_diff_max = torch.max(rollout_probs_diff)
-                            rollout_probs_diff_mean = torch.mean(rollout_probs_diff)
-                            rollout_probs_diff_std = torch.std(rollout_probs_diff)
-                            metrics.update(
-                                {
-                                    "training/rollout_probs_diff_max": rollout_probs_diff_max.detach().item(),
-                                    "training/rollout_probs_diff_mean": rollout_probs_diff_mean.detach().item(),
-                                    "training/rollout_probs_diff_std": rollout_probs_diff_std.detach().item(),
-                                }
-                            )
+                                rollout_probs = torch.exp(rollout_old_log_probs)
+                                actor_probs = torch.exp(actor_old_log_probs)
+                                rollout_probs_diff = torch.abs(rollout_probs - actor_probs)
+                                rollout_probs_diff = torch.masked_select(rollout_probs_diff, response_mask.bool())
+                                rollout_probs_diff_max = torch.max(rollout_probs_diff)
+                                rollout_probs_diff_mean = torch.mean(rollout_probs_diff)
+                                rollout_probs_diff_std = torch.std(rollout_probs_diff)
+                                metrics.update(
+                                    {
+                                        f"training/{wg_id}/rollout_probs_diff_max": rollout_probs_diff_max.detach().item(),
+                                        f"training/{wg_id}/rollout_probs_diff_mean": rollout_probs_diff_mean.detach().item(),
+                                        f"training/{wg_id}/rollout_probs_diff_std": rollout_probs_diff_std.detach().item(),
+                                    }
+                                )
+                            multiagent_batch[wg_id] = sub_batch
 
                     if self.use_reference_policy:
                         # compute reference log_prob
                         with _timer("ref", timing_raw):
-                            if not self.ref_in_actor:
-                                ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
-                            else:
-                                ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
-                            batch = batch.union(ref_log_prob)
+                            for wg_id in multiagent_batch.keys():
+                                sub_batch = multiagent_batch[wg_id]
+                                assert all(wg_id == wg for wg in sub_batch.non_tensor_batch["wg_id"])
+                                if not self.ref_in_actor:
+                                    ref_log_prob = self.ref_policy_wg[wg_id].compute_ref_log_prob(sub_batch)
+                                else:
+                                    ref_log_prob = self.actor_rollout_wg[wg_id].compute_ref_log_prob(sub_batch)
+                                sub_batch = sub_batch.union(ref_log_prob)
 
+                                multiagent_batch[wg_id] = sub_batch
+
+                    batch: DataProto = combine_batches(multiagent_batch)
                     # compute values
                     if self.use_critic:
                         with _timer("values", timing_raw):
@@ -1202,6 +1286,8 @@ class RayPPOTrainer:
                             pf_ppo_weight_pow=self.config.algorithm.pf_ppo.weight_pow,
                             step_advantage_w=self.config.algorithm.gigpo.step_advantage_w,
                             gigpo_mode=self.config.algorithm.gigpo.mode,
+                            gigpo_enable_similarity= self.config.algorithm.gigpo.enable_similarity,
+                            gigpo_similarity_thresh=self.config.algorithm.gigpo.similarity_thresh,
                         )
 
                     # update critic
@@ -1213,20 +1299,36 @@ class RayPPOTrainer:
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
+                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
                         # update actor
                         with _timer("update_actor", timing_raw):
-                            batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
-                            actor_output = self.actor_rollout_wg.update_actor(batch)
-                        actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
-                        metrics.update(actor_output_metrics)
+                            for wg_id in multiagent_batch.keys():
+                                sub_batch = multiagent_batch[wg_id]
+                                assert all(wg_id == wg for wg in sub_batch.non_tensor_batch["wg_id"])
+                                sub_batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
+                                actor_output = self.actor_rollout_wg[wg_id].update_actor(sub_batch)
+                                actor_output_metrics = reduce_metrics(actor_output.meta_info[f"{wg_id}/metrics"])
+                                metrics.update(actor_output_metrics)
+                                multiagent_batch[wg_id] = sub_batch
+
+                        batch: DataProto = combine_batches(multiagent_batch)
 
                     # Log rollout generations if enabled
                     rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
                     if rollout_data_dir:
                         with _timer("dump_rollout_generations", timing_raw):
                             print(batch.batch.keys())
-                            inputs = self.tokenizer.batch_decode(batch.batch["prompts"], skip_special_tokens=True)
-                            outputs = self.tokenizer.batch_decode(batch.batch["responses"], skip_special_tokens=True)
+                            inputs, outputs = [], []
+                            multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
+                            for wg_id in multiagent_batch.keys():
+                                sub_batch = multiagent_batch[wg_id]
+                                sub_inputs = self.tokenizers[wg_id].batch_decode(sub_batch.batch["prompts"], skip_special_tokens=True)
+                                sub_outputs = self.tokenizers[wg_id].batch_decode(sub_batch.batch["responses"], skip_special_tokens=True)
+                                inputs += sub_inputs
+                                outputs += sub_outputs
+                                
+                            batch: DataProto = combine_batches(multiagent_batch)
+
                             scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
                             self._dump_generations(
                                 inputs=inputs,

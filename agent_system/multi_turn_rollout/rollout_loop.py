@@ -6,7 +6,9 @@ from transformers import PreTrainedTokenizer
 import uuid
 from agent_system.multi_turn_rollout.utils import to_list_of_dict, torch_to_numpy, filter_group_data, preprocess_batch
 from agent_system.environments import EnvironmentManagerBase
+from agent_system.agent import BaseOrchestra
 from typing import List, Dict, Any, Optional
+from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 
 class TrajectoryCollector:
     def __init__(self, config, tokenizer: PreTrainedTokenizer, processor=None):
@@ -29,6 +31,7 @@ class TrajectoryCollector:
             episode_lengths: np.ndarray,
             success: Dict[str, np.ndarray],
             traj_uid: np.ndarray,
+            tool_callings: np.ndarray,
             ) -> DataProto:
         """
         Collect and organize trajectory data, handling batch size adjustments to meet parallel training requirements.
@@ -39,19 +42,12 @@ class TrajectoryCollector:
             episode_lengths (np.ndarray): Total steps for each environment
             success (Dict[str, np.ndarray]): Success samples for each environment
             traj_uid (np.ndarray): Trajectory unique identifiers
-        
+            tool_callings (np.ndarray): Number of tool callings for each environment
+
         Returns:
             DataProto: Collected and organized trajectory data
         """
         batch_size = len(total_batch_list)
-
-        episode_rewards_mean = np.mean(episode_rewards)
-        episode_rewards_min = np.min(episode_rewards)
-        episode_rewards_max = np.max(episode_rewards)
-
-        episode_lengths_mean = np.mean(episode_lengths)
-        episode_lengths_min = np.min(episode_lengths)
-        episode_lengths_max = np.max(episode_lengths)
 
         success_rate = {}
         for key, value in success.items():
@@ -65,14 +61,10 @@ class TrajectoryCollector:
                 if data['active_masks']:
                     # episode_rewards
                     data['episode_rewards'] = episode_rewards[bs]
-                    data['episode_rewards_mean'] = episode_rewards_mean
-                    data['episode_rewards_min'] = episode_rewards_min
-                    data['episode_rewards_max'] = episode_rewards_max
                     # episode_lengths
                     data['episode_lengths'] = episode_lengths[bs]
-                    data['episode_lengths_mean'] = episode_lengths_mean
-                    data['episode_lengths_min'] = episode_lengths_min
-                    data['episode_lengths_max'] = episode_lengths_max
+                    # tool_callings
+                    data['tool_callings'] = tool_callings[bs]
                     # success_rate
                     for key, value in success_rate.items():
                         data[key] = value
@@ -105,18 +97,12 @@ class TrajectoryCollector:
             success (Dict[str, np.ndarray]): Success samples for each environment
             traj_uid (np.ndarray): Trajectory unique identifiers
         """
-        # Initial observations from the environment
-        obs, infos = envs.reset()
 
-        # Initialize trajectory collection
-        lenght_obs = len(obs['text']) if obs['text'] is not None else len(obs['image'])
-        if len(gen_batch.batch) != lenght_obs and self.config.env.rollout.n > 0:
-            gen_batch = gen_batch.repeat(repeat_times=self.config.env.rollout.n, interleave=True)
-        assert len(gen_batch.batch) == lenght_obs, f"gen_batch size {len(gen_batch.batch)} does not match obs size {lenght_obs}"
-
-        batch_size = len(gen_batch.batch['input_ids'])
-        batch_output = None
+        batch_size = len(gen_batch.batch)
         
+        # Initial observations from the environment
+        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop('env_kwargs', None))
+
         if self.config.env.rollout.n > 0: # env grouping
             uid_batch = []
             for i in range(batch_size):
@@ -131,8 +117,9 @@ class TrajectoryCollector:
         traj_uid = np.array([str(uuid.uuid4()) for _ in range(batch_size)], dtype=object)
         total_batch_list = [[] for _ in range(batch_size)]
         total_infos = [[] for _ in range(batch_size)]
-        episode_lengths = np.zeros(batch_size, dtype=np.int32)
+        episode_lengths = np.zeros(batch_size, dtype=np.float32)
         episode_rewards = np.zeros(batch_size, dtype=np.float32)
+        tool_callings = np.zeros(batch_size, dtype=np.float32)
         # Trajectory collection loop
         for _step in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
@@ -159,7 +146,11 @@ class TrajectoryCollector:
 
             batch_input.meta_info = gen_batch.meta_info
 
-            batch_output = actor_rollout_wg.generate_sequences(batch_input)
+            # pad to be divisible by dp_size
+            batch_input_padded, pad_size = pad_dataproto_to_divisor(batch_input, actor_rollout_wg.world_size)
+            batch_output_padded = actor_rollout_wg.generate_sequences(batch_input_padded)
+            # # unpad
+            batch_output = unpad_dataproto(batch_output_padded, pad_size=pad_size)
 
             batch.non_tensor_batch['uid'] = uid_batch
             batch.non_tensor_batch['traj_uid'] = traj_uid
@@ -182,8 +173,10 @@ class TrajectoryCollector:
             else:
                 batch.non_tensor_batch['is_action_valid'] = np.ones(batch_size, dtype=bool)
 
+            if 'tool_calling' in infos[0]:
+                tool_callings[active_masks] += np.array([info['tool_calling'] for info in infos], dtype=np.float32)[active_masks]
             # Create reward tensor, only assign rewards for active environments
-            episode_rewards += torch_to_numpy(rewards) * torch_to_numpy(active_masks)
+            episode_rewards[active_masks] += torch_to_numpy(rewards)[active_masks]
             episode_lengths[active_masks] += 1
 
             assert len(rewards) == batch_size, f"env should return rewards for all environments, got {len(rewards)} rewards for {batch_size} environments"
@@ -214,7 +207,7 @@ class TrajectoryCollector:
                     episode_lengths=episode_lengths,
                     )
         
-        return total_batch_list, episode_rewards, episode_lengths, success, traj_uid
+        return total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings
     
     def dynamic_multi_turn_loop(
             self,
@@ -244,6 +237,7 @@ class TrajectoryCollector:
         total_episode_lengths = []
         total_success = []
         total_traj_uid = []
+        total_tool_callings = []
         try_count: int = 0
         max_try_count = self.config.algorithm.filter_groups.max_num_gen_batches
 
@@ -253,16 +247,17 @@ class TrajectoryCollector:
                 print(f"valid num={len(total_batch_list)} < target num={self.config.data.train_batch_size * self.config.env.rollout.n}. Keep generating... ({try_count}/{max_try_count})")
             try_count += 1
 
-            batch_list, episode_rewards, episode_lengths, success, traj_uid = self.vanilla_multi_turn_loop(
+            batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings = self.vanilla_multi_turn_loop(
                 gen_batch=gen_batch,
                 actor_rollout_wg=actor_rollout_wg,
                 envs=envs,
             )
-            batch_list, episode_rewards, episode_lengths, success, traj_uid = filter_group_data(batch_list=batch_list,
+            batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings = filter_group_data(batch_list=batch_list,
                                                                                                 episode_rewards=episode_rewards, 
                                                                                                 episode_lengths=episode_lengths, 
                                                                                                 success=success, 
                                                                                                 traj_uid=traj_uid, 
+                                                                                                tool_callings=tool_callings, 
                                                                                                 config=self.config,
                                                                                                 last_try=(try_count == max_try_count),
                                                                                                 )
@@ -272,13 +267,15 @@ class TrajectoryCollector:
             total_episode_lengths.append(episode_lengths)
             total_success.append(success)
             total_traj_uid.append(traj_uid)
+            total_tool_callings.append(tool_callings)
 
         total_episode_rewards = np.concatenate(total_episode_rewards, axis=0)
         total_episode_lengths = np.concatenate(total_episode_lengths, axis=0)
         total_success = {key: np.concatenate([success[key] for success in total_success], axis=0) for key in total_success[0].keys()}
         total_traj_uid = np.concatenate(total_traj_uid, axis=0)
+        total_tool_callings = np.concatenate(total_tool_callings, axis=0)
 
-        return total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid
+        return total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid, total_tool_callings
 
     def multi_turn_loop(
             self,
@@ -299,10 +296,12 @@ class TrajectoryCollector:
         Returns:
             DataProto: Final collected trajectory data with metadata.
         """
-        # Initial observations from the environment
+        if is_train:
+            gen_batch = gen_batch.repeat(repeat_times=self.config.env.rollout.n, interleave=True)
+
         if self.config.algorithm.filter_groups.enable and is_train:
             # Dynamic Sampling (for DAPO and Dynamic GiGPO)
-            total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid = \
+            total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid, totoal_tool_callings = \
                 self.dynamic_multi_turn_loop(
                 gen_batch=gen_batch,
                 actor_rollout_wg=actor_rollout_wg,
@@ -310,7 +309,7 @@ class TrajectoryCollector:
             )
         else:
             # Vanilla Sampling   
-            total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid = \
+            total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid, totoal_tool_callings = \
                 self.vanilla_multi_turn_loop(
                 gen_batch=gen_batch,
                 actor_rollout_wg=actor_rollout_wg,
@@ -319,6 +318,7 @@ class TrajectoryCollector:
         assert len(total_batch_list) == len(total_episode_rewards)
         assert len(total_batch_list) == len(total_episode_lengths)
         assert len(total_batch_list) == len(total_traj_uid)
+        assert len(total_batch_list) == len(totoal_tool_callings)
         
 
         # Create trajectory data
@@ -328,67 +328,68 @@ class TrajectoryCollector:
             episode_lengths=total_episode_lengths,
             success=total_success,
             traj_uid=total_traj_uid,
+            tool_callings=totoal_tool_callings,
         )
         
         return gen_batch_output
 
-
-from agent_system.agent import MultiAgentChainExecutor, MultiAgentHierarchicalExecutor, BaseExecutor 
 # =============================================================================
 # Multi‑Agent collector orchestrating a *team* of agents
 # =============================================================================
 class MultiAgentTrajectoryCollector(TrajectoryCollector):
     """Trajectory collector that *delegates* action generation to a
-    user‑configurable :class:`BaseExecutor` (chain, hierarchy, etc.)."""
+    user‑configurable :class:`BaseOrchestra` (chain, hierarchy, etc.)."""
 
     # ------------------------------------------------------------------
     def __init__(
         self,
         config: Any,
-        tokenizer: PreTrainedTokenizer,
-        processor: Any = None,
+        wg_to_agents_mapping: Dict[str, List[Dict[str, str]]],
+        tokenizers: Dict[str, PreTrainedTokenizer],
+        processors: Dict[str, Any] = None,
     ):
-        super().__init__(config=config, tokenizer=tokenizer, processor=processor)
+        super().__init__(config=config, tokenizer=tokenizers, processor=processors)
 
-        agent_list = config.agent.agent_list
-        executor_type = config.agent.executor_type
-        print("agent_list: ", agent_list)
-        print("executor_type: ", executor_type)
+        agent_ids = config.agent.agent_ids
+        model_ids = config.agent.model_ids
+        orchestra_type = config.agent.orchestra_type
+        print("agent_ids: ", agent_ids)
+        print("orchestra_type: ", orchestra_type)
 
-        if executor_type == "chain":
-            self.multiagent_executor: BaseExecutor = MultiAgentChainExecutor(
-                agent_list=agent_list,
-                tokenizer=tokenizer,
-                processor=processor,
-                config=config,
-            )
-        elif executor_type == "hierarchy":
-            self.multiagent_executor: BaseExecutor = MultiAgentHierarchicalExecutor(
-                agent_list=agent_list,
-                tokenizer=tokenizer,
-                processor=processor,
-                config=config,
-            )
+        agents_to_wg_mapping = {}
+        for wg_id, agents in wg_to_agents_mapping.items():
+            for a in agents:
+                agent_id = a['agent_id']
+                agents_to_wg_mapping[agent_id] = wg_id
+
+        if orchestra_type == "search":
+            from agent_system.agent.orchestra.search import SearchMultiAgentOrchestra as orchestra
+        elif orchestra_type == "math":
+            from agent_system.agent.orchestra.math import MathMultiAgentOrchestra as orchestra
         else:
-            raise ValueError(f"Unknown executor_type '{executor_type}'.")
+            raise ValueError(f"Unknown orchestra_type '{orchestra_type}'.")
+
+        self.multiagent_orchestra: BaseOrchestra = orchestra(
+            agent_ids=agent_ids,
+            model_ids=model_ids,
+            agents_to_wg_mapping=agents_to_wg_mapping,
+            tokenizers=tokenizers,
+            processors=processors,
+            config=config,
+        )
 
     # ------------------------------------------------------------------
-    def vanilla_multi_turn_loop(  # noqa: D401 – doc in base class
+    def vanilla_multi_turn_loop(
         self,
         gen_batch: DataProto,
         actor_rollout_wg,
         envs: EnvironmentManagerBase,
     ):
-        obs, infos = envs.reset()
 
-        # Initialize trajectory collection
-        lenght_obs = len(obs['text']) if obs['text'] is not None else len(obs['image'])
-        if len(gen_batch.batch) != lenght_obs and self.config.env.rollout.n > 0:
-            gen_batch = gen_batch.repeat(repeat_times=self.config.env.rollout.n, interleave=True)
-        assert len(gen_batch.batch) == lenght_obs, f"gen_batch size {len(gen_batch.batch)} does not match obs size {lenght_obs}"
+        batch_size = len(gen_batch.batch)
 
-        batch_size = len(gen_batch.batch['input_ids'])
-        batch_output = None
+        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop('env_kwargs', None))
+        self.multiagent_orchestra.reset()
         
         if self.config.env.rollout.n > 0: # env grouping
             uid_batch = []
@@ -404,16 +405,18 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         traj_uid = np.array([str(uuid.uuid4()) for _ in range(batch_size)], dtype=object)
         total_batch_list = [[] for _ in range(batch_size)]
         total_infos = [[] for _ in range(batch_size)]
-        episode_lengths = np.zeros(batch_size, dtype=np.int32)
+        episode_lengths = np.zeros(batch_size, dtype=np.float32)
         episode_rewards = np.zeros(batch_size, dtype=np.float32)
+        tool_callings = np.zeros(batch_size, dtype=np.float32)
         # Trajectory collection loop
         for _step in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
             ###############################
-            text_actions, self.multiagent_batch_buffer = self.multiagent_executor.run(
+            text_actions, multiagent_batch_buffer = self.multiagent_orchestra.run(
                 gen_batch=gen_batch,
                 env_obs=obs,
-                actor_rollout_wg=actor_rollout_wg,
+                actor_rollout_wgs=actor_rollout_wg,
+                active_masks=active_masks,
                 step=_step+1
             )
             next_obs, rewards, dones, infos = envs.step(text_actions)
@@ -424,23 +427,26 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 # dones is numpy, delete a dimension
                 dones = dones.squeeze(1)
 
+            if 'tool_calling' in infos[0]:
+                tool_callings[active_masks] += np.array([info['tool_calling'] for info in infos], dtype=np.float32)[active_masks]
             # Create reward tensor, only assign rewards for active environments
-            episode_rewards += torch_to_numpy(rewards) * torch_to_numpy(active_masks)
+            episode_rewards[active_masks] += torch_to_numpy(rewards)[active_masks]
             episode_lengths[active_masks] += 1
 
             assert len(rewards) == batch_size, f"env should return rewards for all environments, got {len(rewards)} rewards for {batch_size} environments"
 
-            for data in self.multiagent_batch_buffer:
-                agent_name, agent_batch = data['name'], data['batch']
-                agent_batch.non_tensor_batch['agent'] = np.array([agent_name for _ in range(batch_size)], dtype=object)
+            for data in multiagent_batch_buffer:
+                agent_id, agent_batch = data['agent_id'], data['batch']
+                agent_batch.non_tensor_batch['agent_id'] = np.array([agent_id for _ in range(batch_size)], dtype=object)
                 agent_batch.non_tensor_batch['uid'] = uid_batch
                 agent_batch.non_tensor_batch['traj_uid'] = traj_uid
                 agent_batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
                 agent_batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
                 agent_batch_list: list[dict] = to_list_of_dict(agent_batch)
                 for i in range(batch_size):
-                    total_batch_list[i].append(agent_batch_list[i])
-                    total_infos[i].append(infos[i])
+                    if agent_batch_list[i]['agent_active_mask']:
+                        total_batch_list[i].append(agent_batch_list[i])
+                        total_infos[i].append(infos[i])
 
             # Update done states
             is_done = np.logical_or(is_done, dones)
@@ -459,4 +465,4 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                     episode_lengths=episode_lengths,
                     )
         
-        return total_batch_list, episode_rewards, episode_lengths, success, traj_uid
+        return total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings

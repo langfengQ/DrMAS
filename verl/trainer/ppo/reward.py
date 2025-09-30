@@ -57,24 +57,12 @@ def get_custom_reward_fn(config):
     return wrapped_fn
 
 
-def load_reward_manager(config, tokenizer, num_examine, **reward_kwargs):
-    reward_manager_name = config.reward_model.get("reward_manager", "naive")
-    if reward_manager_name == "naive":
-        from verl.workers.reward_manager import NaiveRewardManager
+def load_reward_manager(config, tokenizers, num_examine, **reward_kwargs):
+    reward_manager_name = config.reward_model.get("reward_manager", "episode")
+    if reward_manager_name == "episode":
+        from agent_system.reward_manager import EpisodeRewardManager
 
-        reward_manager_cls = NaiveRewardManager
-    elif reward_manager_name == "prime":
-        from verl.workers.reward_manager import PrimeRewardManager
-
-        reward_manager_cls = PrimeRewardManager
-    elif reward_manager_name == "batch":
-        from verl.workers.reward_manager import BatchRewardManager
-
-        reward_manager_cls = BatchRewardManager
-    elif reward_manager_name == "dapo":
-        from verl.workers.reward_manager import DAPORewardManager
-
-        reward_manager_cls = DAPORewardManager
+        reward_manager_cls = EpisodeRewardManager
     else:
         raise NotImplementedError
 
@@ -92,7 +80,7 @@ def load_reward_manager(config, tokenizer, num_examine, **reward_kwargs):
             final_compute_score = default_compute_score
 
     return reward_manager_cls(
-        tokenizer=tokenizer,
+        tokenizers=tokenizers,
         num_examine=num_examine,
         compute_score=final_compute_score,
         reward_fn_key=config.data.reward_fn_key,
@@ -122,10 +110,10 @@ def compute_reward(data: DataProto, reward_fn):
 
 
 @ray.remote(num_cpus=1)
-def compute_reward_async(data: DataProto, config, tokenizer):
+def compute_reward_async(data: DataProto, config, tokenizers):
     """
     Load the reward manager and compute the reward for a batch of data.
     This is meant to be run in a separate Ray worker.
     """
-    reward_fn = load_reward_manager(config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {}))
+    reward_fn = load_reward_manager(config, tokenizers, num_examine=0, **config.reward_model.get("reward_kwargs", {}))
     return compute_reward(data, reward_fn)
