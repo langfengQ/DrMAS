@@ -68,9 +68,9 @@ def preprocess_fn(
         dict: Contains processed input data such as input_ids, attention_mask, etc.
     """
 
-    # raw_prompt = gen_batch.non_tensor_batch['raw_prompt'][item]
+    raw_prompt = gen_batch.non_tensor_batch['raw_prompt'][item]
     data_source = gen_batch.non_tensor_batch['data_source'][item]
-    
+
     # Get observation components
     obs_texts = obs.get('text', None)
     obs_images = obs.get('image', None)
@@ -88,18 +88,23 @@ def preprocess_fn(
     #     obs_content = obs_content.replace('<image>', '')
 
     # Build chat structure
-    obs_content = ''
-    if obs_text is not None:
-        obs_content += obs_text
-    else:
-        print(f"Warning: No text observation found!")
+    system_prompt = "You are a helpful and harmless assistant."
+    for message in raw_prompt:
+        if message['role'] == 'system':
+            system_prompt = message['content']
+        # if message['role'] == 'user':
+        #     context_from_dataset = message['content']
 
-    
-    chat = np.array([{
-        "content": obs_content,
-        "role": "user",
-    }])
-    
+    # if len(context_from_dataset) > 0 and obs_text is not None:
+    #     obs_content = obs_text.replace('{placeholder_of_dataset_context}', context_from_dataset)
+    # else:
+    #     print(f"Warning: No text observation found!")
+
+    obs_content = obs_text
+    chat = np.array([
+        {"content": system_prompt, "role": "system"},
+        {"content": obs_content, "role": "user",}
+        ])
     # Apply chat template
     prompt_with_chat_template = tokenizer.apply_chat_template(
         chat,
@@ -141,7 +146,7 @@ def preprocess_fn(
                                                                         max_length=config.data.max_prompt_length,
                                                                         pad_token_id=tokenizer.pad_token_id,
                                                                         left_pad=True,
-                                                                        truncation='error')
+                                                                        truncation=config.data.truncation,)
     
     
 
@@ -156,12 +161,26 @@ def preprocess_fn(
     else:
         position_ids = compute_position_id_with_mask(attention_mask)
     
+
+    raw_prompt_ids = tokenizer.encode(raw_prompt, add_special_tokens=False)
+    if len(raw_prompt_ids) > config.data.max_prompt_length:
+        if config.data.truncation == "left":
+            raw_prompt_ids = raw_prompt_ids[-config.data.max_prompt_length :]
+        elif config.data.truncation == "right":
+            raw_prompt_ids = raw_prompt_ids[: config.data.max_prompt_length]
+        elif config.data.truncation == "middle":
+            left_half = config.data.max_prompt_length // 2
+            right_half = config.data.max_prompt_length - left_half
+            raw_prompt_ids = raw_prompt_ids[:left_half] + raw_prompt_ids[-right_half:]
+        elif config.data.truncation == "error":
+            raise RuntimeError(f"Prompt length {len(raw_prompt_ids)} is longer than {config.data.max_prompt_length}.")
+
     # Build final output dict
     row_dict.update({
         'input_ids': input_ids[0],
         'attention_mask': attention_mask[0],
         'position_ids': position_ids[0],
-        'raw_prompt_ids': tokenizer.encode(raw_prompt, add_special_tokens=False),
+        'raw_prompt_ids': raw_prompt_ids,
         'anchor_obs': _obs_anchor,
         'index': item,
         'data_source': data_source
@@ -246,51 +265,109 @@ def process_image(image, max_pixels: int = 2048 * 2048, min_pixels: int = 256 * 
     return image
 
 
-def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
-    size_divisor_ref = config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node
-    size_divisor_rollout = config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu * config.trainer.n_gpus_per_node
-    size_divisor_actor = config.actor_rollout_ref.actor.ppo_mini_batch_size
+def adjust_batch(config, data: DataProto, wg_id: str, mode="copy") -> DataProto:
+    use_adaptive_bs = config.actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size
+    ppo_mini_update_num = config.actor_rollout_ref.actor.ppo_mini_update_num
+
+    world_size = config.trainer.n_gpus_per_node * config.trainer.nnodes
+
+    size_divisor_ref = config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu * world_size
+    size_divisor_rollout = config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu * world_size
+
+    size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * world_size
+        
     size_divisor = np.lcm.reduce(np.array([size_divisor_ref, size_divisor_rollout, size_divisor_actor])).item()
 
     # check if the batch size is divisible by the dp size, if not, delete the last few samples to make it divisible
     bs = len(data)
     remainder = bs % size_divisor
     if remainder == 0:
-        return data
-    
-    if mode == "delete":
-        # Generate indices to remove, rather than indices to keep
-        remove_indices = np.random.choice(bs, remainder, replace=False)
-        # Sort remove_indices to maintain stability when deleting
-        remove_indices = np.sort(remove_indices)
-        
-        # Create a boolean mask for elements to keep
-        keep_mask = np.ones(bs, dtype=bool)
-        keep_mask[remove_indices] = False
-
-        keep_mask_tensor = torch.tensor(keep_mask, dtype=torch.bool, device=data.batch['input_ids'].device)
-        # Apply the mask to keep elements in their original order
-        tensor_data = data.batch[keep_mask_tensor]
-        non_tensor_data = {key: val[keep_mask] for key, val in data.non_tensor_batch.items()}
-        adjusted_batch = DataProto(batch=tensor_data, non_tensor_batch=non_tensor_data, meta_info=data.meta_info)
-        del data
-    elif mode == "copy":
-        to_add = size_divisor - remainder
-        dup_indices = np.random.choice(bs, to_add, replace=False)
-        dup_proto = data.select_idxs(dup_indices)
-
-        adjusted_batch = DataProto.concat([data, dup_proto])
+        adjusted_batch = data
     else:
-        raise ValueError(f"Unsupported mode: {mode}")
+        if mode == "delete":
+            # Generate indices to remove, rather than indices to keep
+            remove_indices = np.random.choice(bs, remainder, replace=False)
+            # Sort remove_indices to maintain stability when deleting
+            remove_indices = np.sort(remove_indices)
+            
+            # Create a boolean mask for elements to keep
+            keep_mask = np.ones(bs, dtype=bool)
+            keep_mask[remove_indices] = False
+
+            keep_mask_tensor = torch.tensor(keep_mask, dtype=torch.bool, device=data.batch['input_ids'].device)
+            # Apply the mask to keep elements in their original order
+            tensor_data = data.batch[keep_mask_tensor]
+            non_tensor_data = {key: val[keep_mask] for key, val in data.non_tensor_batch.items()}
+            adjusted_batch = DataProto(batch=tensor_data, non_tensor_batch=non_tensor_data, meta_info=data.meta_info)
+            del data
+        elif mode == "copy":
+            to_add = size_divisor - remainder
+            dup_indices = np.random.choice(bs, to_add, replace=False)
+            dup_proto = data.select_idxs(dup_indices)
+
+            adjusted_batch = DataProto.concat([data, dup_proto])
+        else:
+            raise ValueError(f"Unsupported mode: {mode}")
+
+    if use_adaptive_bs:
+        adjusted_bs = len(adjusted_batch)
+        ulysses_sequence_parallel_size = config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1)
+        assert config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1) == config.critic.get("ulysses_sequence_parallel_size", 1)
+        # assert adjusted_bs % ppo_mini_update_num == 0, f"Adjusted batch size {adjusted_bs} is not divisible by (update_num*node_num//ulysses_sequence_parallel_size) {ppo_mini_update_num*world_size//ulysses_sequence_parallel_size}."
+        adjusted_batch.meta_info[f"{wg_id}/ppo_mini_batch_size"] = -(-adjusted_bs // (ppo_mini_update_num*world_size//ulysses_sequence_parallel_size)) # ceil division
+        assert adjusted_batch.meta_info[f"{wg_id}/ppo_mini_batch_size"] > 0, "ppo_mini_batch_size must be greater than 0."
 
     return adjusted_batch
 
+def split_batch_by_wg_ids(unique_wg_ids: list, data: DataProto) -> Dict[str, DataProto]:
+    """
+    Split a DataProto batch into multiple batches based on unique model IDs.
+    
+    Parameters:
+        unique_wg_ids (list): List of unique workgroup IDs to split the batch by.
+        data (DataProto): Input batch containing agent IDs in non_tensor_batch['agent_id']
+    
+    Returns:
+        Dict[str, DataProto]: Dictionary mapping agent IDs to their respective DataProto batches
+    """
+    wg_ids = data.non_tensor_batch.get('wg_id', None)
+    if wg_ids is None:
+        raise ValueError("DataProto does not contain 'wg_id' in non_tensor_batch.")
+
+    split_batches = {}
+    
+    for _id in unique_wg_ids:
+        indices = np.where(wg_ids == _id)[0]
+        split_batches[_id] = data.select_idxs(indices)
+    
+    return split_batches
+
+def combine_batches(split_batches: Dict[str, DataProto]) -> DataProto:
+    """
+    Combine multiple DataProto batches into a single batch.
+    
+    Parameters:
+        split_batches (Dict[str, DataProto]): Dictionary mapping agent IDs to their respective DataProto batches
+    
+    Returns:
+        DataProto: Combined batch containing all data from the input split batches
+    """
+    combined_batch = None
+    
+    for _id, batch in split_batches.items():
+        if combined_batch is None:
+            combined_batch = batch
+        else:
+            combined_batch = DataProto.concat([combined_batch, batch])
+    
+    return combined_batch
 
 def filter_group_data(batch_list : List[Dict],
                         episode_rewards: np.ndarray,
                         episode_lengths: np.ndarray,
                         success: Dict[str, np.ndarray],
                         traj_uid: np.ndarray,
+                        tool_callings: np.ndarray,
                         config,
                         last_try: bool = False,
                         ):
@@ -300,7 +377,7 @@ def filter_group_data(batch_list : List[Dict],
     Adopted from DAPO (https://arxiv.org/abs/2503.14476)
     """
     if last_try:
-        return batch_list, episode_rewards, episode_lengths, success, traj_uid
+        return batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings
     
     batch_size = config.data.train_batch_size
     group_n = config.env.rollout.n
@@ -323,7 +400,7 @@ def filter_group_data(batch_list : List[Dict],
             # If so, keep the entire group, otherwise, remove it
             keep_indices = np.concatenate((keep_indices, group_indices))
     
-    # Filter the batch_list, episode_rewards, episode_lengths, and success based on the keep_indices
+    # Filter the batch_list, episode_rewards, episode_lengths, success, and tool_callings based on the keep_indices
     success = {
         key: value[keep_indices]
         for key, value in success.items()
@@ -334,6 +411,7 @@ def filter_group_data(batch_list : List[Dict],
     episode_lengths = episode_lengths[keep_indices]
     # success = {key: value[keep_indices] for key, value in success.items()}
     traj_uid = traj_uid[keep_indices]
+    tool_callings = tool_callings[keep_indices]
 
-    return batch_list, episode_rewards, episode_lengths, success, traj_uid
+    return batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings
 

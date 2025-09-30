@@ -317,6 +317,8 @@ class DataParallelPPOActor(BasePPOActor):
         # make sure we are in training mode
         self.actor_module.train()
 
+        wg_id = data.non_tensor_batch['wg_id'][0]
+
         temperature = data.meta_info["temperature"]  # temperature must be in the data.meta_info to avoid silent error
         multi_turn = data.meta_info.get("multi_turn", False)
 
@@ -327,6 +329,14 @@ class DataParallelPPOActor(BasePPOActor):
             select_keys.append("ref_log_prob")
         batch = data.select(batch_keys=select_keys).batch
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
+
+        if self.config.use_adaptive_ppo_mini_batch_size:
+            print(f"----  [update_policy] ----")
+            print(f"pre self.config.ppo_mini_batch_size: {self.config.ppo_mini_batch_size}")
+            self.config.ppo_mini_batch_size = data.meta_info.get(f"{wg_id}/ppo_mini_batch_size", self.config.ppo_mini_batch_size)
+            print(f"post self.config.ppo_mini_batch_size: {self.config.ppo_mini_batch_size}")
+            print(f"batch_size: {len(batch)}")
+            print(f"----  [update_policy] ----")
 
         # Split to make minibatch iterator for updating the actor
         # See PPO paper for details. https://arxiv.org/abs/1707.06347
@@ -413,8 +423,8 @@ class DataParallelPPOActor(BasePPOActor):
                         kl_loss = agg_loss(loss_mat=kld, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
 
                         policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
-                        metrics["actor/kl_loss"] = kl_loss.detach().item()
-                        metrics["actor/kl_coef"] = self.config.kl_loss_coef
+                        metrics[f"actor/{wg_id}/kl_loss"] = kl_loss.detach().item()
+                        metrics[f"actor/{wg_id}/kl_coef"] = self.config.kl_loss_coef
 
                     if self.config.use_dynamic_bsz:
                         # relative to the dynamic bsz
@@ -424,15 +434,15 @@ class DataParallelPPOActor(BasePPOActor):
                     loss.backward()
 
                     data = {
-                        "actor/pg_loss": pg_loss.detach().item(),
-                        "actor/pg_clipfrac": pg_clipfrac.detach().item(),
-                        "actor/ppo_kl": ppo_kl.detach().item(),
-                        "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
+                        f"actor/{wg_id}/pg_loss": pg_loss.detach().item(),
+                        f"actor/{wg_id}/pg_clipfrac": pg_clipfrac.detach().item(),
+                        f"actor/{wg_id}/ppo_kl": ppo_kl.detach().item(),
+                        f"actor/{wg_id}/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
                     }
                     append_to_dict(metrics, data)
 
                 grad_norm = self._optimizer_step()
-                data = {"actor/grad_norm": grad_norm.detach().item()}
+                data = {f"actor/{wg_id}/grad_norm": grad_norm.detach().item()}
                 append_to_dict(metrics, data)
         self.actor_optimizer.zero_grad()
         return metrics

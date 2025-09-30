@@ -66,6 +66,99 @@ class DataProtoConfig(metaclass=_DataProtoConfigMeta):
 
 _padding_size_key = "_padding_size_key_x123d"
 
+def extract_dataproto_via_active_mask(batch_input: "DataProto",
+                                active_mask: Union[List[bool], np.ndarray, torch.Tensor]) -> "DataProto":
+    """
+    Extract only valid data (active=True) as input for the LLM.
+    """
+    if isinstance(active_mask, list):
+        active_mask = np.array(active_mask, dtype=bool)
+    elif isinstance(active_mask, np.ndarray):
+        active_mask = active_mask.astype(bool)
+    elif isinstance(active_mask, torch.Tensor):
+        active_mask = active_mask.detach().cpu().numpy().astype(bool)
+    else:
+        raise TypeError(f"Unsupported mask type: {type(active_mask)}")
+    
+    idxs = np.flatnonzero(active_mask)
+
+    if idxs.size > 0:
+        return batch_input.select_idxs(idxs)
+    else:
+        # all False -> keep at least one
+        print("Warning: all False in active_mask, but we keep at least one sample to avoid empty input.")
+        if len(batch_input) == 0:
+            raise ValueError("Input DataProto is empty; cannot keep at least one sample.")
+        keep_idx = np.array([0], dtype=np.int64)
+        return batch_input.select_idxs(keep_idx)
+
+
+def restore_dataproto_via_active_mask(active_output: "DataProto",
+                                         active_mask: Union[List[bool], np.ndarray, torch.Tensor]) -> "DataProto":
+    """
+    Insert active_output (which only contains valid positions) back into its original length
+    according to active_mask;
+    for invalid positions, fill them with a "randomly chosen" filler
+    (here we use the first element of active_output).
+    """
+    if isinstance(active_mask, list):
+        active_mask = np.array(active_mask, dtype=bool)
+    elif isinstance(active_mask, np.ndarray):
+        active_mask = active_mask.astype(bool)
+    elif isinstance(active_mask, torch.Tensor):
+        active_mask = active_mask.detach().cpu().numpy().astype(bool)
+    else:
+        raise TypeError(f"Unsupported mask type: {type(active_mask)}")
+    
+    total_len = len(active_mask)
+    num_active = int(active_mask.sum())
+    len_active_output = len(active_output)
+
+    # --- Case A: normal path (lengths match)
+    if len_active_output == num_active:
+        num_inactive = total_len - num_active
+        if num_inactive > 0:
+            if len_active_output == 0:
+                raise ValueError("Restore failed: active_output is empty and there are inactive positions.")
+            filler_template = active_output.select_idxs([0])
+            inactive_filler = filler_template.repeat(repeat_times=num_inactive, interleave=True)
+            merged = DataProto.concat([active_output, inactive_filler])
+        else:
+            merged = active_output
+
+        # order: first num_active are trues, rest are fillers
+        order_idx = np.empty((total_len,), dtype=np.int64)
+        t_ptr, f_ptr = 0, num_active
+        for i, is_true in enumerate(active_mask):
+            if is_true:
+                order_idx[i] = t_ptr; t_ptr += 1
+            else:
+                order_idx[i] = f_ptr; f_ptr += 1
+        merged.reorder(torch.from_numpy(order_idx))
+        return merged
+
+    # --- Case B: special path (mask all False but we kept at least one in extract)
+    if num_active == 0 and len_active_output >= 1:
+        fillers_needed = total_len - len_active_output
+        if fillers_needed < 0:
+            raise ValueError(
+                f"Restore failed: active_output has more rows ({len_active_output}) than total_len ({total_len})."
+            )
+        if fillers_needed > 0:
+            filler_template = active_output.select_idxs([0])
+            inactive_filler = filler_template.repeat(repeat_times=fillers_needed, interleave=True)
+            merged = DataProto.concat([active_output, inactive_filler])
+        else:
+            merged = active_output  # already total_len
+            
+        return merged
+
+    # --- Other mismatches are invalid
+    raise ValueError(
+        f"Restore failed: length mismatch (len(active_output)={len_active_output}) vs sum(active_mask)={num_active} "
+        "in a non-supported scenario."
+    )
+
 
 def pad_dataproto_to_divisor(data: "DataProto", size_divisor: int):
     """Pad a DataProto to size divisible by size_divisor

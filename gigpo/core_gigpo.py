@@ -1,7 +1,17 @@
-"""
-Core functions to implement GiGPO algorithms.
-The function implemented in this file should be used by trainer with different distributed strategies to implement GiGPO
-"""
+# Copyright 2025 Nanyang Technological University (NTU), Singapore
+# and the verl-agent (GiGPO) team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import numpy as np
 import torch
@@ -9,10 +19,20 @@ from collections import defaultdict, Counter
 from verl import DataProto
 import uuid
 
+from difflib import SequenceMatcher
+from typing import Sequence, List, Dict, Any
+
+
+"""
+Core functions to implement the GiGPO algorithm (https://arxiv.org/abs/2505.10978).
+The function implemented in this file should be used by trainer with different distributed strategies to implement GiGPO.
+"""
+
 # ---------------------------------------------------------- #
 # --------------- General Functions of GiGPO --------------- #
 # ---------------------------------------------------------- #
 def to_hashable(x):
+    """Convert an object into a hashable type (used for clustering/grouping)."""
     if isinstance(x, (int, float, str, bool)):
         return x
     elif isinstance(x, (np.integer, np.floating)):
@@ -49,11 +69,37 @@ def summarize_group_size(group_size: list):
         if prop:
             print(f"{size:>4} | {cnt:>5} | {prop:>9.2%}")
             
+def are_similar(a: str, b: str, threshold: float = 0.95) -> bool:
+    """
+    Check whether two text observations are similar enough.
+    
+    Args:
+        a, b (str): Input strings to compare.
+        threshold (float): Minimum similarity ratio.
+    
+    Returns:
+        bool: True if similarity >= threshold.
+    """
+    if not isinstance(a, str) or not isinstance(b, str):
+        raise ValueError("Only text-based observations are supported for similarity-based GiGPO in this version.")
+    return SequenceMatcher(None, a, b).ratio() >= threshold
 
 def compute_step_discounted_returns(batch: DataProto, gamma: float):
+    """
+    Compute discounted returns for each trajectory. (Eq. 5 in the paper)
+    
+    Args:
+        batch (DataProto): Input batch.
+        gamma (float): Discount factor.
+    
+    Returns:
+        torch.Tensor: Discounted returns.
+    """
     rewards = batch.non_tensor_batch['rewards'].astype(np.float32)
     traj_uids = batch.non_tensor_batch['traj_uid']
     active_masks = batch.non_tensor_batch['active_masks'].astype(np.float32)
+    env_step = batch.non_tensor_batch['env_step'].astype(np.int32)
+    # returns_by_traj_ = {}
     returns_by_traj = {}
     unique_traj_uids = np.unique(traj_uids)
     for uid in unique_traj_uids:
@@ -63,26 +109,45 @@ def compute_step_discounted_returns(batch: DataProto, gamma: float):
         # Extract rewards and masks for this trajectory
         traj_rewards = rewards[traj_indices]
         traj_active_masks = active_masks[traj_indices]
+        traj_env_step = env_step[traj_indices]
         assert traj_active_masks.all(), "active_masks should be all 1s for the same trajectory"
         
+        first_of_group = np.r_[True, traj_env_step[1:] != traj_env_step[:-1]]
+        step_starts = np.flatnonzero(first_of_group)
+        step_ends = np.r_[step_starts[1:], len(traj_env_step)]
+
+        step_rewards = traj_rewards[step_starts].astype(np.float32)
+
         # Calculate returns
-        traj_returns = np.zeros_like(traj_rewards)
-        running_return = 0
+        step_returns = np.zeros_like(step_rewards, dtype=np.float32)
+        running_return = 0.0
         
         # Calculate returns from the end to the start
-        for t in reversed(range(len(traj_rewards))):
-            running_return = traj_rewards[t] + gamma * running_return
-            traj_returns[t] = running_return
+        for k in reversed(range(len(step_rewards))):
+            running_return = step_rewards[k] + gamma * running_return
+            step_returns[k] = running_return
         
+        traj_returns = np.zeros_like(traj_rewards, dtype=np.float32)
+        for sr, s, e in zip(step_returns, step_starts, step_ends):
+            traj_returns[s:e] = sr
+            
         # Store the results
-        returns_by_traj[uid] = traj_returns
+        # returns_by_traj_[uid] = traj_returns
+        returns_by_traj[uid] = (traj_indices, traj_returns)
     
     # Recombine the returns into the original batch order
-    all_returns = np.zeros_like(rewards)
-    for i, uid in enumerate(traj_uids):
-        traj_indices = np.where(traj_uids == uid)[0]
-        idx_in_traj = np.where(traj_indices == i)[0][0]  # Find position of i in its trajectory
-        all_returns[i] = returns_by_traj[uid][idx_in_traj]
+    # all_returns_ = np.zeros_like(rewards)
+    # for i, uid in enumerate(traj_uids):
+    #     traj_indices = np.where(traj_uids == uid)[0]
+    #     idx_in_traj = np.where(traj_indices == i)[0][0]  # Find position of i in its trajectory
+    #     all_returns_[i] = returns_by_traj_[uid][idx_in_traj]
+
+    all_returns = np.zeros_like(rewards, dtype=np.float32)
+    for uid in unique_traj_uids:
+        traj_indices, traj_returns = returns_by_traj[uid]
+        all_returns[traj_indices] = traj_returns
+
+    # assert (all_returns==all_returns_).all()
     
     all_returns = torch.tensor(all_returns, dtype=torch.float32, device=batch.batch['input_ids'].device)
     return all_returns
@@ -99,9 +164,13 @@ def compute_gigpo_outcome_advantage(token_level_rewards: torch.Tensor,
                                    traj_index: np.array,
                                    epsilon: float = 1e-6,
                                    step_advantage_w: float = 1.0,
-                                   mode: str = "mean_norm"
+                                   mode: str = "mean_norm",
+                                   enable_similarity: bool = False,
+                                   similarity_thresh: float = 0.95,
                                    ):
-    
+    """
+    Compute the advantages for GiGPO (https://arxiv.org/abs/2505.10978).
+    """
     if mode == "mean_std_norm":
         remove_std = False
     elif mode == "mean_norm":
@@ -109,15 +178,16 @@ def compute_gigpo_outcome_advantage(token_level_rewards: torch.Tensor,
     else:
         raise ValueError(f"Unknown mode: {mode}")
     
-    # Compute episode-level group reward
+    # Compute episode relative advantages (Eq. 3 in the paper).
     episode_advantages = episode_norm_reward(token_level_rewards, response_mask, index, traj_index, epsilon, remove_std)
     
-    # Compute step_group_uids
-    step_group_uids = build_step_group(anchor_obs, index)
+    # Anchor state grouping (Eq. 6 in the paper).
+    step_group_uids = build_step_group(anchor_obs, index, enable_similarity, similarity_thresh)
 
-    # Compute step-level group reward
+    # Compute step relative advantages (Eq. 7 in the paper).
     step_advantages = step_norm_reward(step_rewards, response_mask, step_group_uids, epsilon, remove_std)
 
+    # Compute joint advantages (Eq. 8 in the paper).
     scores = episode_advantages + step_advantage_w * step_advantages
     return scores, scores
 
@@ -128,7 +198,7 @@ def episode_norm_reward(token_level_rewards: torch.Tensor,
                         traj_index: np.array,
                         epsilon: float = 1e-6,
                         remove_std: bool = True,
-                        compute_mean_std_cross_all_data: bool = True,
+                        compute_mean_std_cross_steps: bool = True,
                         ):
     """
     Compute episode-level advantage using mean-std normalization for GiGPO.
@@ -146,9 +216,9 @@ def episode_norm_reward(token_level_rewards: torch.Tensor,
             A small value to avoid division by zero.
         remove_std: bool
             If True, the standard deviation is removed from the normalization.
-        compute_mean_std_cross_all_data: bool
-            If True (more stable), the mean and std are computed across all data in the batch. 
-            If False (i.e., standard episode-level adv), the mean and std are computed across N trajectories.
+        compute_mean_std_cross_steps: bool
+            If True (more stable), the mean and std are computed across steps within one group. 
+            If False (i.e., standard episode-level adv), the mean and std are computed across trajectories within one group.
     
     Returns:
         advantages: `(torch.Tensor)`
@@ -169,7 +239,7 @@ def episode_norm_reward(token_level_rewards: torch.Tensor,
             if (index[i], traj_index[i]) in seen_pairs:
                 continue
             id2score[index[i]].append(scores[i])
-            if not compute_mean_std_cross_all_data:
+            if not compute_mean_std_cross_steps:
                 seen_pairs.add((index[i], traj_index[i]))
 
         for idx in id2score:
@@ -191,7 +261,7 @@ def episode_norm_reward(token_level_rewards: torch.Tensor,
     return episode_advantages
 
 
-def build_step_group(anchor_obs: np.array, index: np.array, summarize: bool = False):
+def build_step_group(anchor_obs: np.array, index: np.array, enable_similarity: bool = False, similarity_thresh: float = 0.95, summarize: bool = False):
     """
     Group observations by index and then cluster identical observations within each index group.
     Assigns a unique step_group_uid (UUID) to each cluster.
@@ -204,39 +274,72 @@ def build_step_group(anchor_obs: np.array, index: np.array, summarize: bool = Fa
         Array of episode_group_uid
     summarize : bool
         Whether to summarize the group sizes (default: True)
+    enable_similarity : bool
+        Whether to enable similarity-based step-level grouping (default: False)
+    similarity_thresh : float
+        Threshold for similarity to consider two observations as identical (default: 1.0, meaning exact match)
     
     Returns:
     --------
     np.array
         Array of step_group_uid values corresponding to the original anchor_obs array
     """
+    if enable_similarity:
+        assert similarity_thresh > 0.0 and similarity_thresh < 1.0, "When enabling similarity-based step-level group, similarity_thresh should be in (0, 1)"
+
     # Initialize the result array with placeholder values
     step_group_uids = np.empty(len(anchor_obs), dtype=object)
     
     # Get unique indices
     unique_indices = np.unique(index)
 
-    group_size = []
+    group_size: List[int] = []
     # Process each unique index
     for idx in unique_indices:
-        # Get all observations for this index using np.where
-        indices = np.where(index == idx)[0]
-        obs_group = anchor_obs[indices]
-        
-        # Create clusters for identical observations
-        clusters = defaultdict(list)
-        for i, obs in enumerate(obs_group):
-            clusters[to_hashable(obs)].append(indices[i])  # Store the original index position
-        
-        # Assign unique step_group_uid to each cluster
-        for obs, original_indices in clusters.items():
-            # Generate a UUID for this cluster
-            uid = str(uuid.uuid4())
+        if not enable_similarity:
+            # Get all observations for this index using np.where
+            indices = np.where(index == idx)[0]
+            obs_group = anchor_obs[indices]
             
-            # Assign the same step_group_uid to all elements in this cluster
-            group_size.append(len(original_indices))
-            for original_idx in original_indices:
-                step_group_uids[original_idx] = uid
+            # Create clusters for identical observations
+            clusters = defaultdict(list)
+            for i, obs in enumerate(obs_group):
+                clusters[to_hashable(obs)].append(indices[i])  # Store the original index position
+            
+            # Assign unique step_group_uid to each cluster
+            for obs, original_indices in clusters.items():
+                # Generate a UUID for this cluster
+                uid = str(uuid.uuid4())
+                
+                # Assign the same step_group_uid to all elements in this cluster
+                group_size.append(len(original_indices))
+                for original_idx in original_indices:
+                    step_group_uids[original_idx] = uid
+        else:
+            locs = np.where(index == idx)[0]
+            obs_group = anchor_obs[locs]
+
+            # Dynamically maintain clusters: [{rep: str, locs: List[int]} ...]
+            clusters: List[Dict[str, Any]] = []
+
+            for obs, loc in zip(obs_group, locs):
+                 # Try to place into an existing cluster
+                placed = False
+                for cluster in clusters:
+                    if are_similar(obs, cluster["rep"], similarity_thresh):
+                        cluster["locs"].append(loc)
+                        placed = True
+                        break
+                # If no matching cluster, create a new one
+                if not placed:
+                    clusters.append({"rep": obs, "locs": [loc]})
+
+            # Assign a UUID to each cluster
+            for cluster in clusters:
+                uid = str(uuid.uuid4())
+                group_size.append(len(cluster["locs"]))
+                for loc in cluster["locs"]:
+                    step_group_uids[loc] = uid
 
         # Validate that all elements have been assigned a uid
     if None in step_group_uids or np.any(step_group_uids == None):
