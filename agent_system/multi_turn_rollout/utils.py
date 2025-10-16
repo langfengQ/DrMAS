@@ -152,13 +152,14 @@ def preprocess_fn(
     
 
     if is_multi_modal:
-
-        position_ids = get_rope_index(
-            processor,
-            input_ids=input_ids[0],
-            image_grid_thw=image_grid_thw,
-            attention_mask=attention_mask[0],
-        )  # (3, seq_len)
+        position_ids = [
+            get_rope_index(
+                processor,
+                input_ids=input_ids[0],
+                image_grid_thw=image_grid_thw,
+                attention_mask=attention_mask[0],
+            )
+            ]  # (1, 3, seq_len)
     else:
         position_ids = compute_position_id_with_mask(attention_mask)
     
@@ -286,8 +287,11 @@ def adjust_batch(config, data: DataProto, wg_id: str, mode="copy") -> DataProto:
 
     size_divisor_ref = flatten_lcm(config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu) * world_size
     size_divisor_rollout = flatten_lcm(config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu) * world_size
-    size_divisor_actor = flatten_lcm(config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu) * world_size
-    
+    if "multi_modal_inputs" in data.non_tensor_batch:
+        size_divisor_actor = flatten_lcm(config.actor_rollout_ref.actor.ppo_mini_batch_size) * world_size
+    else:
+        size_divisor_actor = flatten_lcm(config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu) * world_size
+
     size_divisor = np.lcm.reduce(np.array([size_divisor_ref, size_divisor_rollout, size_divisor_actor])).item()
 
     # check if the batch size is divisible by the dp size, if not, delete the last few samples to make it divisible
