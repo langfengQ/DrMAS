@@ -4,38 +4,110 @@ import re
 from collections import defaultdict
 from agent_system.environments.env_package.math.utils import extract_answer
 
+from omegaconf import OmegaConf, DictConfig, ListConfig
+
 def normalize_agent_id(agent_id: str) -> str:
     return agent_id.strip().replace(" ", "")
 
 def normalize_model_id(model_id: str) -> str:
     return model_id.split("/")[-1]
 
-def build_wg_ids(agent_ids, model_ids, model_sharing=True):
+def omega_equal_resolved(cfg1, cfg2) -> bool:
+    """Check deep equality between two OmegaConf configs after resolving interpolations."""
+    return OmegaConf.to_container(cfg1, resolve=True) == OmegaConf.to_container(cfg2, resolve=True)
+
+def _set_specific_parameter(base_config, idx: int, total: int, agent_specific_parameters: List[str] = None):
+    """
+    Update agent-specific parameters in the base configuration for a given agent index.
+
+    Args:
+        base_config: An OmegaConf.DictConfig or a regular dict.
+        idx (int): The index of the current agent (0-based).
+        total (int): Total number of agents.
+        agent_specific_parameters (List[str], optional):
+            A list of parameter paths that vary by agent, e.g.
+            ["actor.optim.lr", "actor.ppo_micro_batch_size_per_gpu"].
+
+    Returns:
+        A new configuration (DictConfig) customized for the current agent.
+    """
+
+    # Deep-copy the base config to avoid mutating the original
+    cfg = OmegaConf.create(OmegaConf.to_container(base_config, resolve=True))
+    if agent_specific_parameters is None:
+        return cfg
+
+    for param_path in agent_specific_parameters:
+        value = OmegaConf.select(base_config, param_path)
+        if value is None:
+            raise ValueError(f"Parameter path '{param_path}' not found in base_config.")
+        if not isinstance(value, ListConfig):
+            raise ValueError(
+                f"Agent-Specific Parameter '{param_path}' must be a list or ListConfig, but got {type(value).__name__}."
+            )
+        if len(value) != total:
+            raise ValueError(
+                f"Agent-Specific Parameter '{param_path}' list length mismatch: expected {total}, got {len(value)}. Full value: {value}"
+            )
+        
+        specific_value = value[idx]
+        OmegaConf.update(cfg, param_path, specific_value, merge=False)
+    return cfg
+
+
+def build_wg_ids(config):
+    agent_ids = config.agent.agent_ids
+    model_ids = config.agent.model_ids
+    model_sharing = config.agent.model_sharing
+
     if len(agent_ids) != len(model_ids):
         raise ValueError("agent_ids and model_ids must have the same length.")
 
+
+    base_config = config.actor_rollout_ref
+    agent_specific_parameters = config.agent.agent_specific_parameters
+    
+    total_agent_num = len(agent_ids)
     if not model_sharing:
         wg_to_agents = {}
-        for agent_id, model_id in zip(agent_ids, model_ids):
+        for idx in range(total_agent_num):
+            agent_id = agent_ids[idx]
+            model_id = model_ids[idx]
+            per_config = _set_specific_parameter(base_config, idx, total_agent_num, agent_specific_parameters)
             norm_agent = normalize_model_id(agent_id)
             norm_model = normalize_model_id(model_id)
             wg_id = f"{norm_model}_{norm_agent}"
-            wg_to_agents[wg_id] = [{"agent_id": agent_id, "model_id": model_id}]
-        return wg_to_agents
+            wg_to_agents[wg_id] = [{"agent_id": agent_id, "model_id": model_id, "config_actor_rollout_ref": per_config}]
     else:
         model_to_agents = defaultdict(list)
-        for agent_id, model_id in zip(agent_ids, model_ids):
-            model_to_agents[model_id].append(agent_id)
+        for idx in range(total_agent_num):
+            agent_id = agent_ids[idx]
+            model_id = model_ids[idx]
+            per_config = _set_specific_parameter(base_config, idx, total_agent_num, agent_specific_parameters)
+            model_to_agents[model_id].append({"agent_id": agent_id, "config_actor_rollout_ref": per_config})
 
         wg_to_agents = {}
-        for model_id, agents in model_to_agents.items():
-            norm_agents = [normalize_agent_id(a) for a in agents]
+        for model_id, agents_configs in model_to_agents.items():
+
+            ref_cfg = agents_configs[0]["config_actor_rollout_ref"]
+            for ac in agents_configs[1:]:
+                assert omega_equal_resolved(ref_cfg, ac["config_actor_rollout_ref"]), (
+                    f"Agents sharing model '{model_id}' must have equal configs."
+                )
+
+            norm_agents = [normalize_agent_id(ac["agent_id"]) for ac in agents_configs]
             norm_model = normalize_model_id(model_id)
             wg_id = "_".join([norm_model] + norm_agents)
             wg_to_agents[wg_id] = [
-                {"agent_id": a, "model_id": model_id} for a in agents
+                {
+                    "agent_id": ac["agent_id"],
+                    "model_id": model_id,
+                    "config_actor_rollout_ref": ac["config_actor_rollout_ref"]
+                }
+                for ac in agents_configs
             ]
-        return wg_to_agents
+
+    return wg_to_agents
 
 def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, check_think_tag: bool = False, return_whole_response: bool = False) -> List[str]:
     """

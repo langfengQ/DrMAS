@@ -290,8 +290,10 @@ ray_init:
 agent: # only for multi-agent training
   multi_agent: True # True for multi-agent training, False for single-agent training
   agent_ids: ["Reflexion Agent", "Action Agent", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "Action Agent", "Memory Agent"]
-  model_ids: ["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-3B-Instruct"]
-  model_sharing: True 
+  model_ids: ["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-3B-Instruct"]
+  train_start_step: null
+  model_sharing: False 
+  agent_specific_parameters: null # Optional: define agent-specific parameter overrides (only support actor_rollout_ref), e.g., ["actor.optim.lr", "actor.ppo_micro_batch_size_per_gpu"]
   orchestra_type: chain
   use_agent_memory: False
   random_dropout: False

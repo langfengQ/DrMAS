@@ -319,26 +319,31 @@ def adjust_batch(config, data: DataProto, wg_id: str, mode="copy") -> DataProto:
 
     return adjusted_batch
 
-def split_batch_by_wg_ids(unique_wg_ids: list, data: DataProto) -> Dict[str, DataProto]:
+def split_batch_by_wg_ids(data: DataProto, unique_wg_ids: List[str], update_agent_ids: List[str] = None) -> Dict[str, DataProto]:
     """
     Split a DataProto batch into multiple batches based on unique model IDs.
     
     Parameters:
-        unique_wg_ids (list): List of unique workgroup IDs to split the batch by.
         data (DataProto): Input batch containing agent IDs in non_tensor_batch['agent_id']
-    
+        unique_wg_ids (list): List of unique workgroup IDs to split the batch by.
+        update_agent_ids (List[str], optional): List of agent IDs that will be trained. If provided, all agents will be included in the output.
     Returns:
         Dict[str, DataProto]: Dictionary mapping agent IDs to their respective DataProto batches
     """
     wg_ids = data.non_tensor_batch.get('wg_id', None)
+    agent_ids = data.non_tensor_batch.get('agent_id', None)
     if wg_ids is None:
         raise ValueError("DataProto does not contain 'wg_id' in non_tensor_batch.")
 
     split_batches = {}
-    
+    update_agent_ids = None if update_agent_ids is None else np.array(update_agent_ids, dtype=object)
+    active_mask = np.ones_like(agent_ids, dtype=bool) if update_agent_ids is None \
+                else np.isin(agent_ids, update_agent_ids)
+        
     for _id in unique_wg_ids:
-        indices = np.where(wg_ids == _id)[0]
-        split_batches[_id] = data.select_idxs(indices)
+        indices = np.flatnonzero(np.logical_and((wg_ids == _id), active_mask))
+        if len(indices) > 0:
+            split_batches[_id] = data.select_idxs(indices)
     
     return split_batches
 

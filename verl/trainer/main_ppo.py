@@ -64,7 +64,8 @@ class TaskRunner:
         from agent_system.agent.utils import build_wg_ids, normalize_agent_id, normalize_model_id
         tokenizers: dict = {}
         processors: dict = {}
-        wg_to_agents_mapping = build_wg_ids(config.agent.agent_ids, config.agent.model_ids, config.agent.model_sharing)
+        
+        wg_to_agents_mapping = build_wg_ids(config)
         for wg_id, agents_list in wg_to_agents_mapping.items():
             # download the checkpoint from hdfs
             model_id = agents_list[0]['model_id']
