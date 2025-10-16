@@ -1,23 +1,20 @@
 set -x
 
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=4,5,6,7
 
-agent_ids='["Reflexion Agent", "Search Agent", "Critic Agent"]'
-# "Reflexion Agent"
-# "Search Agent"
-# "Critic Agent"
-
-model_ids='["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-3B-Instruct"]'
-model_sharing=True
-random_dropout=False
-random_dropout_ratio=0.5
-
-# "meta-llama/Llama-3.2-3B-Instruct"
-# "Qwen/Qwen3-4B-Instruct-2507"
-# "Qwen/Qwen2.5-1.5B-Instruct"
+##################### Agent Configurations #####################
+agent_ids='["Reflexion Agent","Search Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
+model_ids='["Qwen/Qwen2.5-7B-Instruct","Qwen/Qwen2.5-3B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
+model_sharing=False
+train_start_step='[0,50]'
 
 orchestra_type=search
-use_agent_memory=False
+
+# Agent-specific parameter override (only support actor_rollout_ref)
+agent_specific_parameters='["actor.optim.lr"]'
+actor_optim_lr='[1e-6,1e-6]'
+
+##################### Training Configurations #################
 
 train_data_size=256
 val_data_size=512
@@ -25,21 +22,24 @@ group_size=5
 max_turn=4
 ppo_mini_update_num=10
 
+max_prompt_length=4096
+max_response_length=1024
+
+###################### Algorithm Configurations #################
+
 algorithm=gigpo
 gigpo_mode=mean_std_norm # "mean_norm" or "mean_std_norm"
 step_advantage_w=0.3
 
-max_prompt_length=4096
-max_response_length=1024
+####################### Other Configurations #####################
 
 model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
 agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
+step_tag=$(jq -r 'if type=="array" then map(tostring)|join("_") else tostring|gsub("[\\[\\] ]";"")|gsub(",";"_") end' <<< "$train_start_step")
 
 combined_tag=$(paste -d_ <(echo "$agent_name_tag") <(echo "$model_name_tag") | paste -sd_ -)
 
-dropout_tag=$([[ "${random_dropout,,}" == "true" ]] && printf 'dropout%s' "${random_dropout_ratio}" || printf '%s' 'nodropout')
-
-experiment_name="${algorithm}_w${step_advantage_w}_${max_turn}turn_${ppo_mini_update_num}update_${max_prompt_length}prompt_${max_response_length}res_${dropout_tag}_share${model_sharing}_${combined_tag}"
+experiment_name="${combined_tag}_${step_tag}_share${model_sharing}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
 
 local_dir="/mnt/raid/data/langf/checkpoints/multiagent_search/${experiment_name}"
 
@@ -57,9 +57,8 @@ python3 -m verl.trainer.main_ppo \
     data.filter_overlong_prompts=False \
     data.truncation='left' \
     data.return_raw_chat=True \
-    actor_rollout_ref.model.path=None \
-    actor_rollout_ref.actor.optim.lr=1e-6 \
-    actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=0.1 \
+    actor_rollout_ref.model.path=null \
+    actor_rollout_ref.actor.optim.lr=$actor_optim_lr \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=$ppo_mini_update_num \
@@ -96,8 +95,9 @@ python3 -m verl.trainer.main_ppo \
     agent.agent_ids="$agent_ids" \
     agent.model_ids="$model_ids" \
     agent.model_sharing=$model_sharing \
+    agent.train_start_step=$train_start_step \
+    agent.agent_specific_parameters=$agent_specific_parameters \
     agent.orchestra_type=$orchestra_type \
-    agent.use_agent_memory=$use_agent_memory \
     agent.random_dropout=$random_dropout \
     agent.random_dropout_ratio=$random_dropout_ratio \
     trainer.critic_warmup=0 \
@@ -107,7 +107,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \
-    trainer.test_freq=150 \
+    trainer.test_freq=500 \
     trainer.total_epochs=1 \
     trainer.default_local_dir="$local_dir" \
     trainer.val_before_train=False $@

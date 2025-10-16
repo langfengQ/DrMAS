@@ -855,8 +855,8 @@ class RayPPOTrainer:
         # Set configurations for each model
         wg_configs = {}
         for wg_id, agents_list in self.wg_to_agents_mapping.items():
-            wg_configs[wg_id] = deepcopy(self.config.actor_rollout_ref)
-            wg_configs[wg_id].model.path = agents_list[0]['model_id']
+            wg_configs[wg_id] = agents_list[0]["config_actor_rollout_ref"]
+            wg_configs[wg_id].model.path = agents_list[0]["model_id"]
 
         # create actor and rollout
         if self.hybrid_engine:
@@ -1149,7 +1149,13 @@ class RayPPOTrainer:
                     
                     # multiagent_batch (Dict[str, DataProto]): Dictionary mapping unique_wg_ids to their respective DataProto batches
                     unique_wg_ids = list(self.wg_to_agents_mapping.keys())
-                    multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
+
+                    if self.config.agent.train_start_step is not None:
+                        update_agent_ids = [agent_i for (agent_i, train_start_step_i) in zip(self.config.agent.agent_ids, self.config.agent.train_start_step) if train_start_step_i <= self.global_steps]
+                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids, update_agent_ids=update_agent_ids)
+                    else:
+                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids)
+
                     for wg_id in multiagent_batch.keys():
                         sub_batch = multiagent_batch[wg_id]
                         sub_batch = adjust_batch(self.config, sub_batch, wg_id=wg_id)
@@ -1182,7 +1188,7 @@ class RayPPOTrainer:
                         else:
                             reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
-                    multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
+                    multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids)
                     # recompute old_log_probs
                     with _timer("old_log_prob", timing_raw):
                         for wg_id in multiagent_batch.keys():
@@ -1299,7 +1305,7 @@ class RayPPOTrainer:
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
-                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
+                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids)
                         # update actor
                         with _timer("update_actor", timing_raw):
                             for wg_id in multiagent_batch.keys():
@@ -1319,7 +1325,7 @@ class RayPPOTrainer:
                         with _timer("dump_rollout_generations", timing_raw):
                             print(batch.batch.keys())
                             inputs, outputs = [], []
-                            multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(unique_wg_ids, batch)
+                            multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids)
                             for wg_id in multiagent_batch.keys():
                                 sub_batch = multiagent_batch[wg_id]
                                 sub_inputs = self.tokenizers[wg_id].batch_decode(sub_batch.batch["prompts"], skip_special_tokens=True)
