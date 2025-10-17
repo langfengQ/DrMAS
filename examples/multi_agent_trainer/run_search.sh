@@ -42,8 +42,6 @@ combined_tag=$(paste -d_ <(echo "$agent_name_tag") <(echo "$model_name_tag") | p
 
 experiment_name="${combined_tag}_${step_tag}_share${model_sharing}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
 
-local_dir="/mnt/raid/data/langf/checkpoints/multiagent_search/${experiment_name}"
-
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
 VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
 
@@ -110,5 +108,4 @@ python3 -m verl.trainer.main_ppo \
     trainer.save_freq=-1 \
     trainer.test_freq=500 \
     trainer.total_epochs=1 \
-    trainer.default_local_dir="$local_dir" \
     trainer.val_before_train=False $@
