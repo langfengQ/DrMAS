@@ -148,7 +148,7 @@ class TaskRunner:
         else:
             raise NotImplementedError
 
-        reward_fn = reward_manager_cls(tokenizers=tokenizers, num_examine=0, normalize_by_length=False)
+        reward_fn = reward_manager_cls(tokenizers=tokenizers, num_examine=1, normalize_by_length=False)
 
         # Note that we always use function-based RM for validation
         val_reward_fn = reward_manager_cls(tokenizers=tokenizers, num_examine=1, normalize_by_length=False)
