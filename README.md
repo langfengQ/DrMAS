@@ -18,7 +18,7 @@ To run an agent in any of these environments, you must first install and configu
 
 ### 1. Search (tool-use)
 ```bash
-conda activate verl-agent
+conda activate multiagent
 cd ./agent_system/environments/env_package/search/third_party
 pip install -e .
 pip install gym==0.26.2
