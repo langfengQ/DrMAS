@@ -543,7 +543,13 @@ class SGLangRollout(BaseRollout):
         with self.update_sampling_params(**kwargs):
             # print(f"{self.sampling_params=}")
             if self._tp_rank == 0:
-                loop = asyncio.get_event_loop()
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        raise RuntimeError("Event loop is closed")
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
                 output = loop.run_until_complete(
                     self._engine.async_generate(
                         prompt=None,  # because we have already convert it to prompt token id
@@ -817,7 +823,13 @@ class SGLangRollout(BaseRollout):
                 prompts,
                 n=1 if is_validate else self.config.n,
             )
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    raise RuntimeError("Event loop is closed")
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
             output_req_list = loop.run_until_complete(
                 asyncio.gather(
                     *[self._async_rollout_a_request(req, do_sample, is_validate, **kwargs) for req in req_list],
@@ -1035,7 +1047,13 @@ class SGLangRollout(BaseRollout):
             }
             output = None
             if self._tp_rank == 0:
-                loop = asyncio.get_event_loop()
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        raise RuntimeError("Event loop is closed")
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
                 output = loop.run_until_complete(
                     self._engine.async_generate(
                         prompt=prompt_str,
