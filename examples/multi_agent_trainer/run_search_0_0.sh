@@ -1,19 +1,19 @@
 set -x
 
-export CUDA_VISIBLE_DEVICES=4,5,6,7
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 ##################### Agent Configurations #####################
 agent_ids='["Reflexion Agent","Search Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
 model_ids='["Qwen/Qwen2.5-7B-Instruct","Qwen/Qwen2.5-3B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
 model_sharing=False
-train_start_step='[0,50]'
+train_start_step='[0,0]'
 
 orchestra_type=search
 
 # Agent-specific parameter override (only support actor_rollout_ref)
 agent_specific_parameters='["actor.optim.lr","actor.ppo_micro_batch_size_per_gpu"]'
 actor_optim_lr='[1e-6,1e-6]'
-actor_ppo_micro_batch_size_per_gpu='[8,16]'
+actor_ppo_micro_batch_size_per_gpu='[4,8]'
 
 ##################### Training Configurations #################
 

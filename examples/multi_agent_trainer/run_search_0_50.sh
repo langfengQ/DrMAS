@@ -13,7 +13,7 @@ orchestra_type=search
 # Agent-specific parameter override (only support actor_rollout_ref)
 agent_specific_parameters='["actor.optim.lr","actor.ppo_micro_batch_size_per_gpu"]'
 actor_optim_lr='[1e-6,1e-6]'
-actor_ppo_micro_batch_size_per_gpu='[8,16]'
+actor_ppo_micro_batch_size_per_gpu='[4,8]'
 
 ##################### Training Configurations #################
 
