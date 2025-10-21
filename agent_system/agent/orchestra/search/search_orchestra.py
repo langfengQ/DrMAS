@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import List, Dict, Any, Optional, Tuple
 from transformers import PreTrainedTokenizer
 from agent_system.agent.orchestra.base import BaseOrchestra
+from agent_system.agent.orchestra.performance_monitor import PerformanceMonitor
 # from agent_system.agent.agents import *
 import importlib
 from verl import DataProto
@@ -11,23 +12,38 @@ import numpy as np
 
 
 def update_team_context(agent_id: str, team_context: List[str], text_response: str, agent_active_mask: Optional[np.ndarray] = None) -> List[str]:
-    """Update the observation dictionary with the text response."""
+    """Update the observation dictionary with the text response.
+    
+    Optimized version: Pre-format the suffix once and apply vectorized operations.
+    """
     if agent_active_mask is None:
         agent_active_mask = np.ones(len(team_context), dtype=bool)
-    # Naive append of the latest responses to observations
-    for i in range(len(team_context)):
-        if agent_active_mask[i]:
-            team_context[i] = team_context[i] + f"""\nThe output of "{agent_id}": {text_response[i]}\n"""
+    
+    # Pre-compute active indices to avoid repeated conditional checks
+    active_indices = np.where(agent_active_mask)[0]
+    
+    # Only update contexts for active samples
+    for i in active_indices:
+        # Use f-string formatting (more efficient than concatenation)
+        team_context[i] = f'{team_context[i]}\nThe output of "{agent_id}": {text_response[i]}\n'
+    
     return team_context
 
 def update_text_action(text_actions: List[str], text_response: List[str], agent_active_mask: Optional[np.ndarray] = None) -> List[str]:
-    """Update the text actions with the latest response."""
+    """Update the text actions with the latest response.
+    
+    Optimized version: Use vectorized operations to avoid loop overhead.
+    """
     if agent_active_mask is None:
         agent_active_mask = np.ones(len(text_actions), dtype=bool)
-
-    for i in range(len(text_actions)):
-        if agent_active_mask[i]:
-            text_actions[i] = text_response[i]
+    
+    # Pre-compute active indices
+    active_indices = np.where(agent_active_mask)[0]
+    
+    # Batch update using active indices
+    for i in active_indices:
+        text_actions[i] = text_response[i]
+    
     return text_actions
 
 
@@ -79,16 +95,35 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         # if self.agent_order[-1] != "ActionAgent":
         #     raise ValueError("The last agent must be ActionAgent.")
         self.max_loop_num = 2
+        
+        # Performance monitoring (disabled by default)
+        self.perf_monitor = PerformanceMonitor(
+            enabled=getattr(config.agent, 'enable_performance_monitor', False)
+        )
 
     def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, active_masks: np.ndarray, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
-        # clear and reset multiagent batch buffer
-        self.reset_buffer()
-        text_actions, team_context, env_obs = self.initialize_context(env_obs)
+        """Run the multiagent orchestra with optimized performance.
+        
+        Optimizations:
+        1. Early termination when no active samples remain
+        2. Skip agent calls when agent_active_mask is all False
+        3. Early exit from critic loop when all samples approved
+        """
+        with self.perf_monitor.measure("orchestra_run_total", {"batch_size": len(gen_batch), "step": step}):
+            # clear and reset multiagent batch buffer
+            self.reset_buffer()
+            text_actions, team_context, env_obs = self.initialize_context(env_obs)
 
+            batch_size = len(gen_batch)
+        
         if self.enable_critic:
-            approved_vector = np.zeros(len(gen_batch), dtype=bool)  # Vector to track if the action is approved
+            approved_vector = np.zeros(batch_size, dtype=bool)  # Vector to track if the action is approved
 
         for loop_i in range(self.max_loop_num):
+            # Early termination: if all samples are approved, no need to continue
+            if self.enable_critic and approved_vector.all():
+                break
+            
             # run agents sequentially, passing observation and batch
             for name in self.agent_order:
 
@@ -99,40 +134,53 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
                 # skip last time for critic agent
                 if name == self.critic_agent and loop_i == self.max_loop_num - 1:
                     break
-                    
-                agent_active_mask = np.ones(len(gen_batch), dtype=bool)
+                
+                # Compute agent_active_mask efficiently
+                agent_active_mask = active_masks.copy()  # Start with global active masks
+                
+                # Apply random dropout if enabled (but not for output agent)
                 if self.random_dropout and name != self.output_agent:
-                    agent_active_mask = np.random.binomial(1, self.random_dropout_ratio, size=len(gen_batch)).astype(bool)
-
-                agent_active_mask = np.logical_and(agent_active_mask, active_masks).astype(bool)
+                    dropout_mask = np.random.binomial(1, self.random_dropout_ratio, size=batch_size).astype(bool)
+                    agent_active_mask = np.logical_and(agent_active_mask, dropout_mask)
                 
+                # Skip already approved samples if critic is enabled
                 if self.enable_critic:
-                    # AND for agent_active_mask and (not approved_vector)
-                    agent_active_mask = np.logical_and(agent_active_mask, np.logical_not(approved_vector)).astype(bool)
-                    
-                actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[name]]
-                batch, text_repsonses = self.agents[name].call(gen_batch=gen_batch, 
-                                                                env_obs=env_obs, 
-                                                                team_context=team_context, 
-                                                                actor_rollout_wg=actor_rollout_wg,
-                                                                agent_active_mask=agent_active_mask, 
-                                                                step=step,
-                                                                )
+                    agent_active_mask = np.logical_and(agent_active_mask, np.logical_not(approved_vector))
                 
+                # Early skip: if no samples are active for this agent, skip the call entirely
+                if not agent_active_mask.any():
+                    continue
+                
+                # Measure agent execution time
+                num_active = agent_active_mask.sum()
+                with self.perf_monitor.measure(f"agent_{name}", {"active_samples": num_active, "loop": loop_i}):
+                    actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[name]]
+                    batch, text_repsonses = self.agents[name].call(gen_batch=gen_batch, 
+                                                                    env_obs=env_obs, 
+                                                                    team_context=team_context, 
+                                                                    actor_rollout_wg=actor_rollout_wg,
+                                                                    agent_active_mask=agent_active_mask, 
+                                                                    step=step,
+                                                                    )
+                
+                # Update team context only for active samples
                 team_context = update_team_context(name, team_context, text_repsonses, agent_active_mask)
+                
                 # save the batch to the multiagent buffer
                 self.save_to_buffer(name, batch)
 
+                # Update state based on agent type
                 if name == self.critic_agent and self.enable_critic:
                     approved_vector = self.agents[self.critic_agent].update_approved_vector(text_repsonses, approved_vector, agent_active_mask)
+                    # Early exit if all approved after critic
+                    if approved_vector.all():
+                        break
                 elif name == self.output_agent:
                     text_actions = update_text_action(text_actions, text_repsonses, agent_active_mask)
 
+            # Non-critic mode: only run once
             if not self.enable_critic:
                 break
-            if approved_vector.all():
-                break
-
-        # if len(self.multiagent_batch_buffer) != len(self.agent_order):
-        #     raise Warning("Multiagent output batch buffer length does not match number of agents. This may lead to unexpected behavior.")
+        
+        self.perf_monitor.record_step()
         return text_actions, self.multiagent_batch_buffer

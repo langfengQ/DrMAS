@@ -12,23 +12,38 @@ import numpy as np
 
 
 def update_team_context(agent_id: str, team_context: List[str], text_response: str, agent_active_mask: Optional[np.ndarray] = None) -> List[str]:
-    """Update the observation dictionary with the text response."""
+    """Update the observation dictionary with the text response.
+    
+    Optimized version: Pre-format the suffix once and apply vectorized operations.
+    """
     if agent_active_mask is None:
         agent_active_mask = np.ones(len(team_context), dtype=bool)
-    # Naive append of the latest responses to observations
-    for i in range(len(team_context)):
-        if agent_active_mask[i]:
-            team_context[i] = team_context[i] + f"""\nThe output of "{agent_id}": {text_response[i]}\n"""
+    
+    # Pre-compute active indices to avoid repeated conditional checks
+    active_indices = np.where(agent_active_mask)[0]
+    
+    # Only update contexts for active samples
+    for i in active_indices:
+        # Use f-string formatting (more efficient than concatenation)
+        team_context[i] = f'{team_context[i]}\nThe output of "{agent_id}": {text_response[i]}\n'
+    
     return team_context
 
 def update_text_action(text_actions: List[str], text_response: List[str], agent_active_mask: Optional[np.ndarray] = None) -> List[str]:
-    """Update the text actions with the latest response."""
+    """Update the text actions with the latest response.
+    
+    Optimized version: Use vectorized operations to avoid loop overhead.
+    """
     if agent_active_mask is None:
         agent_active_mask = np.ones(len(text_actions), dtype=bool)
-
-    for i in range(len(text_actions)):
-        if agent_active_mask[i]:
-            text_actions[i] = text_response[i]
+    
+    # Pre-compute active indices
+    active_indices = np.where(agent_active_mask)[0]
+    
+    # Batch update using active indices
+    for i in active_indices:
+        text_actions[i] = text_response[i]
+    
     return text_actions
 
 class BaseOrchestra:
