@@ -242,7 +242,7 @@ def compute_response_mask(data: DataProto):
     return attention_mask[:, -response_length:]
 
 
-def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, grpo_group_by_agent_id=False, step_advantage_w=1.0, gigpo_mode="mean_std_norm", gigpo_enable_similarity=False, gigpo_similarity_thresh=0.95, **kwargs):
+def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, group_by_agent_id=False, step_advantage_w=1.0, gigpo_mode="mean_std_norm", gigpo_enable_similarity=False, gigpo_similarity_thresh=0.95, **kwargs):
     """Compute advantage estimates for policy optimization.
 
     This function computes advantage estimates using various estimators like GAE, GRPO, REINFORCE++, etc.
@@ -264,7 +264,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
     if "response_mask" not in data.batch:
         data.batch["response_mask"] = compute_response_mask(data)
     # Determine grouping strategy based on configuration
-    if grpo_group_by_agent_id and 'agent_id' in data.non_tensor_batch:
+    if group_by_agent_id:
         # Group by both uid and agent_id
         group_index = np.array([f"{uid}_{agent_id}" for uid, agent_id in zip(data.non_tensor_batch["uid"], data.non_tensor_batch["agent_id"])], dtype=object)
     else:
@@ -302,6 +302,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            group_by_agent_id=group_by_agent_id,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -312,6 +313,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            group_by_agent_id=group_by_agent_id,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -321,6 +323,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             response_mask=data.batch["response_mask"],
             index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
+            group_by_agent_id=group_by_agent_id,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -347,6 +350,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             response_mask=data.batch["response_mask"],
             index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
+            group_by_agent_id=group_by_agent_id,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -362,6 +366,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             mode=gigpo_mode,
             enable_similarity=gigpo_enable_similarity,
             similarity_thresh=gigpo_similarity_thresh,
+            group_by_agent_id=group_by_agent_id,
             )
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
@@ -1285,7 +1290,7 @@ class RayPPOTrainer:
                         # compute advantages, executed on the driver process
 
                         norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)  # GRPO adv normalization factor
-                        grpo_group_by_agent_id = self.config.algorithm.get("grpo_group_by_agent_id", False) # 
+                        group_by_agent_id = self.config.algorithm.get("group_by_agent_id", False) # 
 
                         batch = compute_advantage(
                             batch,
@@ -1294,7 +1299,7 @@ class RayPPOTrainer:
                             lam=self.config.algorithm.lam,
                             num_repeat=self.config.actor_rollout_ref.rollout.n,
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-                            grpo_group_by_agent_id=grpo_group_by_agent_id,
+                            group_by_agent_id=group_by_agent_id,
                             multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
                             use_pf_ppo=self.config.algorithm.use_pf_ppo,
                             pf_ppo_reweight_method=self.config.algorithm.pf_ppo.reweight_method,

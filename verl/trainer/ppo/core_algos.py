@@ -117,7 +117,7 @@ def compute_grpo_outcome_advantage(
     traj_index: np.ndarray,
     epsilon: float = 1e-6,
     norm_adv_by_std_in_grpo: str = True,
-    compute_mean_std_cross_steps: bool = False,
+    group_by_agent_id: bool = False,
 ):
     """
     Compute advantage for GRPO, operating only on Outcome reward
@@ -131,8 +131,8 @@ def compute_grpo_outcome_advantage(
             whether to scale the GRPO advantage.
             If True, the advantage is scaled by the std, as in the original GRPO.
             If False, the advantage is not scaled, as in Dr.GRPO (https://arxiv.org/abs/2503.20783).
-        compute_mean_std_cross_steps: bool
-            If True (more stable), the mean and std are computed across steps within one group. 
+        group_by_agent_id: bool
+            If True, the mean and std are computed across agent group.
             If False (i.e., standard episode-level adv), the mean and std are computed across trajectories within one group.
 
     Returns:
@@ -153,7 +153,7 @@ def compute_grpo_outcome_advantage(
             if (index[i], traj_index[i]) in seen_pairs:
                 continue
             id2score[index[i]].append(scores[i])
-            if not compute_mean_std_cross_steps:
+            if not group_by_agent_id:
                 seen_pairs.add((index[i], traj_index[i]))
         for idx in id2score:
             if len(id2score[idx]) == 1:
@@ -181,7 +181,7 @@ def compute_grpo_passk_outcome_advantage(
     traj_index: np.ndarray,
     epsilon: float = 1e-6,
     norm_adv_by_std_in_grpo: bool = True,
-    compute_mean_std_cross_steps: bool = False,
+    group_by_agent_id: bool = False,
 ):
     """
     Compute advantage for Pass@k using a GRPO-style outcome reward formulation.
@@ -195,8 +195,8 @@ def compute_grpo_passk_outcome_advantage(
         index: (bs,) → group ID per sample
         epsilon: float for numerical stability
         norm_adv_by_std_in_grpo: if True, normalize advantage by std within group
-        compute_mean_std_cross_steps: bool
-            If True (more stable), the mean and std are computed across steps within one group. 
+        group_by_agent_id: bool
+            If True, the mean and std are computed across agent group.
             If False (i.e., standard episode-level adv), the mean and std are computed across trajectories within one group.
 
     Returns:
@@ -217,7 +217,7 @@ def compute_grpo_passk_outcome_advantage(
             idx = index[i]
             id2scores[idx].append(scores[i])
             id2indices[idx].append(i)
-            if not compute_mean_std_cross_steps:
+            if not group_by_agent_id:
                 seen_pairs.add((index[i], traj_index[i]))
         for idx in id2scores:
             rewards = torch.stack(id2scores[idx])  # (k,)
@@ -236,7 +236,7 @@ def compute_grpo_passk_outcome_advantage(
     return advantages, advantages
 
 
-def compute_reinforce_plus_plus_baseline_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: torch.Tensor, traj_index: np.ndarray, epsilon: float = 1e-6, compute_mean_std_cross_steps: bool = False):
+def compute_reinforce_plus_plus_baseline_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: torch.Tensor, traj_index: np.ndarray, epsilon: float = 1e-6, group_by_agent_id: bool = False):
     """
     Compute advantage for RF++-baseline (https://arxiv.org/abs/2501.03262), operating only on Outcome reward
     (with only one scalar reward for each response).
@@ -264,7 +264,7 @@ def compute_reinforce_plus_plus_baseline_outcome_advantage(token_level_rewards: 
             if (index[i], traj_index[i]) in seen_pairs:
                 continue
             id2score[index[i]].append(scores[i])
-            if not compute_mean_std_cross_steps:
+            if not group_by_agent_id:
                 seen_pairs.add((index[i], traj_index[i]))
         for idx in id2score:
             if len(id2score[idx]) == 1:
@@ -282,7 +282,7 @@ def compute_reinforce_plus_plus_baseline_outcome_advantage(token_level_rewards: 
     return scores, scores
 
 
-def compute_rloo_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: np.ndarray, traj_index: np.ndarray, epsilon: float = 1e-6, compute_mean_std_cross_steps: bool = False):
+def compute_rloo_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: np.ndarray, traj_index: np.ndarray, epsilon: float = 1e-6, group_by_agent_id: bool = False):
     """
     Compute advantage for RLOO based on https://arxiv.org/abs/2402.14740
     Args:
@@ -308,7 +308,7 @@ def compute_rloo_outcome_advantage(token_level_rewards: torch.Tensor, response_m
             if (index[i], traj_index[i]) in seen_pairs:
                 continue
             id2score[index[i]].append(scores[i])
-            if not compute_mean_std_cross_steps:
+            if not group_by_agent_id:
                 seen_pairs.add((index[i], traj_index[i]))
         for idx in id2score:
             if len(id2score[idx]) == 1:

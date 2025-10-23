@@ -26,7 +26,7 @@ max_response_length=1024
 ###################### Algorithm Configurations #################
 
 algorithm=grpo
-grpo_group_by_agent_id=False
+group_by_agent_id=False
 
 ####################### Other Configurations #####################
 
@@ -35,7 +35,7 @@ agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:
 
 combined_tag="${agent_name_tag}_${model_name_tag}"
 
-experiment_name="${combined_tag}_share${model_sharing}_groupbyagent${grpo_group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
+experiment_name="${combined_tag}_share${model_sharing}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
 
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
 VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
@@ -76,7 +76,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     algorithm.use_kl_in_reward=False \
     algorithm.gamma=0.95 \
-    algorithm.grpo_group_by_agent_id=$grpo_group_by_agent_id \
+    algorithm.group_by_agent_id=$group_by_agent_id \
     env.env_name=search \
     env.seed=0 \
     env.search.search_url='http://127.0.0.1:7856/retrieve' \
