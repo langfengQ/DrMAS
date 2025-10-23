@@ -235,6 +235,7 @@ algorithm:
   lam: 1.0
   adv_estimator: gae
   norm_adv_by_std_in_grpo: True
+  grpo_group_by_agent_id: False # Whether to group by both uid and agent_id in GRPO advantage computation
   use_kl_in_reward: False
   kl_penalty: kl  # how to estimate kl divergence
   kl_ctrl:
@@ -294,10 +295,9 @@ agent: # only for multi-agent training
   train_start_step: null
   model_sharing: False 
   agent_specific_parameters: null # Optional: define agent-specific parameter overrides (only support actor_rollout_ref), e.g., ["actor.optim.lr", "actor.ppo_micro_batch_size_per_gpu"]
-  orchestra_type: chain
+  orchestra_type: search
   use_agent_memory: False
-  random_dropout: False
-  random_dropout_ratio: 0.2
+  random_dropout_ratio: 0.0 # [0, 1]
 
 
 env:

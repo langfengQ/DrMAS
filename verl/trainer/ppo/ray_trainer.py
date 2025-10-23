@@ -242,7 +242,7 @@ def compute_response_mask(data: DataProto):
     return attention_mask[:, -response_length:]
 
 
-def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, step_advantage_w=1.0, gigpo_mode="mean_std_norm", gigpo_enable_similarity=False, gigpo_similarity_thresh=0.95, **kwargs):
+def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, grpo_group_by_agent_id=False, step_advantage_w=1.0, gigpo_mode="mean_std_norm", gigpo_enable_similarity=False, gigpo_similarity_thresh=0.95, **kwargs):
     """Compute advantage estimates for policy optimization.
 
     This function computes advantage estimates using various estimators like GAE, GRPO, REINFORCE++, etc.
@@ -263,6 +263,13 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
     # Back-compatible with trainers that do not compute response mask in fit
     if "response_mask" not in data.batch:
         data.batch["response_mask"] = compute_response_mask(data)
+    # Determine grouping strategy based on configuration
+    if grpo_group_by_agent_id and 'agent_id' in data.non_tensor_batch:
+        # Group by both uid and agent_id
+        group_index = np.array([f"{uid}_{agent_id}" for uid, agent_id in zip(data.non_tensor_batch["uid"], data.non_tensor_batch["agent_id"])], dtype=object)
+    else:
+        # Use original uid grouping
+        group_index = data.non_tensor_batch["uid"]
     # prepare response group
     # TODO: add other ways to estimate advantages
     if adv_estimator == AdvantageEstimator.GAE:
@@ -292,7 +299,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         advantages, returns = core_algos.compute_grpo_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=grpo_calculation_mask,
-            index=data.non_tensor_batch["uid"],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
         )
@@ -302,7 +309,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         advantages, returns = core_algos.compute_grpo_passk_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=data.batch["response_mask"],
-            index=data.non_tensor_batch["uid"],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
         )
@@ -312,7 +319,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         advantages, returns = core_algos.compute_reinforce_plus_plus_baseline_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=data.batch["response_mask"],
-            index=data.non_tensor_batch["uid"],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
         )
         data.batch["advantages"] = advantages
@@ -338,7 +345,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         advantages, returns = core_algos.compute_rloo_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=data.batch["response_mask"],
-            index=data.non_tensor_batch["uid"],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
         )
         data.batch["advantages"] = advantages
@@ -349,7 +356,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             step_rewards=data.batch['step_rewards'], # for step group reward computing
             response_mask=data.batch['response_mask'],
             anchor_obs=data.non_tensor_batch['anchor_obs'],
-            index=data.non_tensor_batch['uid'],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             step_advantage_w=step_advantage_w,
             mode=gigpo_mode,
@@ -1278,6 +1285,7 @@ class RayPPOTrainer:
                         # compute advantages, executed on the driver process
 
                         norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)  # GRPO adv normalization factor
+                        grpo_group_by_agent_id = self.config.algorithm.get("grpo_group_by_agent_id", False) # 
 
                         batch = compute_advantage(
                             batch,
@@ -1286,6 +1294,7 @@ class RayPPOTrainer:
                             lam=self.config.algorithm.lam,
                             num_repeat=self.config.actor_rollout_ref.rollout.n,
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+                            grpo_group_by_agent_id=grpo_group_by_agent_id,
                             multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
                             use_pf_ppo=self.config.algorithm.use_pf_ppo,
                             pf_ppo_reweight_method=self.config.algorithm.pf_ppo.reweight_method,

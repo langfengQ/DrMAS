@@ -12,7 +12,17 @@ import numpy as np
 
 
 def update_team_context(agent_id: str, team_context: List[str], text_response: str, agent_active_mask: Optional[np.ndarray] = None) -> List[str]:
-    """Update the observation dictionary with the text response."""
+    """Update the team context with agent responses.
+    
+    Args:
+        agent_id: Identifier of the agent that produced the response
+        team_context: Current team context for each batch item
+        text_response: Text responses from the agent
+        agent_active_mask: Optional mask indicating which items are active
+        
+    Returns:
+        Updated team context list
+    """
     if agent_active_mask is None:
         agent_active_mask = np.ones(len(team_context), dtype=bool)
     # Naive append of the latest responses to observations
@@ -22,7 +32,16 @@ def update_team_context(agent_id: str, team_context: List[str], text_response: s
     return team_context
 
 def update_text_action(text_actions: List[str], text_response: List[str], agent_active_mask: Optional[np.ndarray] = None) -> List[str]:
-    """Update the text actions with the latest response."""
+    """Update text actions with the latest agent responses.
+    
+    Args:
+        text_actions: Current text actions for each batch item
+        text_response: New text responses from the agent
+        agent_active_mask: Optional mask indicating which items are active
+        
+    Returns:
+        Updated text actions list
+    """
     if agent_active_mask is None:
         agent_active_mask = np.ones(len(text_actions), dtype=bool)
 
@@ -32,7 +51,11 @@ def update_text_action(text_actions: List[str], text_response: List[str], agent_
     return text_actions
 
 class BaseOrchestra:
-    """Abstract orchestra coordinating a list of agent *names* or instances."""
+    """Abstract orchestra coordinating a list of agent instances.
+    
+    This base class provides common functionality for orchestrating multiple agents
+    in various execution patterns (sequential, hierarchical, etc.).
+    """
 
     def __init__(
         self,
@@ -43,6 +66,16 @@ class BaseOrchestra:
         processors: Dict[str, Any],
         config: Any,
     ):
+        """Initialize the base orchestra.
+        
+        Args:
+            agent_ids: List of agent identifiers
+            model_ids: List of model identifiers
+            agents_to_wg_mapping: Mapping from agent names to worker group IDs
+            tokenizers: Dictionary of tokenizers for each worker group
+            processors: Dictionary of processors for each worker group
+            config: Configuration object
+        """
         self.config = config
         self.tokenizers = tokenizers
         self.processors = processors
@@ -74,24 +107,42 @@ class BaseOrchestra:
         self.multiagent_batch_buffer.clear()
 
     def save_to_buffer(self, name: str, batch: DataProto):
-        """Save new batch to the multiagent buffer."""
+        """Save agent output batch to the multiagent buffer.
+        
+        Args:
+            agent_name: Name of the agent that produced the batch
+            batch: The output batch from the agent
+        """
         self.multiagent_batch_buffer.append({
             "agent_id": name,
             "batch": batch,
         })
 
     def initialize_context(self, env_obs):
+        """Initialize execution context from environment observations.
+        
+        Args:
+            env_obs: Environment observations containing text, image, and other data
+            
+        Returns:
+            Tuple of (text_actions, team_context, processed_env_obs)
+        """
         batch_size = len(env_obs['text'])
         text_actions = ["" for _ in range(batch_size)]
         team_context = ["" for _ in range(batch_size)]  # Initialize team context for each batch item
         for i in range(batch_size):
             if "{memory}" in env_obs['text'][i]:
-                env_obs['text'][i] = env_obs['text'][i].replace("{memory}", self.memory[i] if self.memory is not None else "")
+                memory_content = self.memory[i] if self.memory is not None else ""
+                env_obs['text'][i] = env_obs['text'][i].replace("{memory}", memory_content)
 
         return text_actions, team_context, env_obs
 
     def update_memory(self, text_repsonses: List[str]):
-        """Update the memory of the agents with the latest text responses."""
+        """Update agent memory with latest text responses.
+        
+        Args:
+            text_responses: Latest text responses from agents
+        """
         if self.memory is None:
             self.memory = text_repsonses
         else:

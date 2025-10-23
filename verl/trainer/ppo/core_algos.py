@@ -117,7 +117,7 @@ def compute_grpo_outcome_advantage(
     traj_index: np.ndarray,
     epsilon: float = 1e-6,
     norm_adv_by_std_in_grpo: str = True,
-    compute_mean_std_cross_steps: bool = True,
+    compute_mean_std_cross_steps: bool = False,
 ):
     """
     Compute advantage for GRPO, operating only on Outcome reward
@@ -181,7 +181,7 @@ def compute_grpo_passk_outcome_advantage(
     traj_index: np.ndarray,
     epsilon: float = 1e-6,
     norm_adv_by_std_in_grpo: bool = True,
-    compute_mean_std_cross_steps: bool = True,
+    compute_mean_std_cross_steps: bool = False,
 ):
     """
     Compute advantage for Pass@k using a GRPO-style outcome reward formulation.
@@ -236,7 +236,7 @@ def compute_grpo_passk_outcome_advantage(
     return advantages, advantages
 
 
-def compute_reinforce_plus_plus_baseline_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: torch.Tensor, traj_index: np.ndarray, epsilon: float = 1e-6, compute_mean_std_cross_steps: bool = True):
+def compute_reinforce_plus_plus_baseline_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: torch.Tensor, traj_index: np.ndarray, epsilon: float = 1e-6, compute_mean_std_cross_steps: bool = False):
     """
     Compute advantage for RF++-baseline (https://arxiv.org/abs/2501.03262), operating only on Outcome reward
     (with only one scalar reward for each response).
@@ -282,7 +282,7 @@ def compute_reinforce_plus_plus_baseline_outcome_advantage(token_level_rewards: 
     return scores, scores
 
 
-def compute_rloo_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: np.ndarray, traj_index: np.ndarray, epsilon: float = 1e-6, compute_mean_std_cross_steps: bool = True):
+def compute_rloo_outcome_advantage(token_level_rewards: torch.Tensor, response_mask: torch.Tensor, index: np.ndarray, traj_index: np.ndarray, epsilon: float = 1e-6, compute_mean_std_cross_steps: bool = False):
     """
     Compute advantage for RLOO based on https://arxiv.org/abs/2402.14740
     Args:

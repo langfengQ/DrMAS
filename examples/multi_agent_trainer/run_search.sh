@@ -1,19 +1,16 @@
 set -x
 
-export CUDA_VISIBLE_DEVICES=4,5,6,7
-
 ##################### Agent Configurations #####################
-agent_ids='["Reflexion Agent","Search Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
-model_ids='["Qwen/Qwen2.5-7B-Instruct","Qwen/Qwen2.5-3B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
+agent_ids='["Reflexion Agent","Search Agent","Critic Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
+model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-3B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
 model_sharing=False
-train_start_step='[0,50]'
 
 orchestra_type=search
 
 # Agent-specific parameter override (only support actor_rollout_ref)
 agent_specific_parameters='["actor.optim.lr","actor.ppo_micro_batch_size_per_gpu"]'
-actor_optim_lr='[1e-6,1e-6]'
-actor_ppo_micro_batch_size_per_gpu='[8,16]'
+actor_optim_lr='[1e-6,1e-6,1e-6]'
+actor_ppo_micro_batch_size_per_gpu='[4,8,4]'
 
 ##################### Training Configurations #################
 
@@ -28,19 +25,17 @@ max_response_length=1024
 
 ###################### Algorithm Configurations #################
 
-algorithm=gigpo
-gigpo_mode=mean_std_norm # "mean_norm" or "mean_std_norm"
-step_advantage_w=0.3
+algorithm=grpo
+grpo_group_by_agent_id=False
 
 ####################### Other Configurations #####################
 
-model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
-agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:]' '[:lower:]' | tr '-' '_')
-step_tag=$(jq -r 'if type=="array" then map(tostring)|join("_") else tostring|gsub("[\\[\\] ]";"")|gsub(",";"_") end' <<< "$train_start_step")
+model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
+agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
 
-combined_tag=$(paste -d_ <(echo "$agent_name_tag") <(echo "$model_name_tag") | paste -sd_ -)
+combined_tag="${agent_name_tag}_${model_name_tag}"
 
-experiment_name="${combined_tag}_${step_tag}_share${model_sharing}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
+experiment_name="${combined_tag}_share${model_sharing}_groupbyagent${grpo_group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
 
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
 VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
@@ -67,7 +62,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
@@ -81,10 +76,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     algorithm.use_kl_in_reward=False \
     algorithm.gamma=0.95 \
-    algorithm.gigpo.step_advantage_w=$step_advantage_w \
-    algorithm.gigpo.enable_similarity=True \
-    algorithm.gigpo.similarity_thresh=0.9 \
-    algorithm.gigpo.mode=$gigpo_mode \
+    algorithm.grpo_group_by_agent_id=$grpo_group_by_agent_id \
     env.env_name=search \
     env.seed=0 \
     env.search.search_url='http://127.0.0.1:7856/retrieve' \
@@ -94,11 +86,8 @@ python3 -m verl.trainer.main_ppo \
     agent.agent_ids="$agent_ids" \
     agent.model_ids="$model_ids" \
     agent.model_sharing=$model_sharing \
-    agent.train_start_step=$train_start_step \
     agent.agent_specific_parameters=$agent_specific_parameters \
     agent.orchestra_type=$orchestra_type \
-    agent.random_dropout=$random_dropout \
-    agent.random_dropout_ratio=$random_dropout_ratio \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='multiagent_search' \
