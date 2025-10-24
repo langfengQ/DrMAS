@@ -297,7 +297,6 @@ agent: # only for multi-agent training
   agent_specific_parameters: null # Optional: define agent-specific parameter overrides (only support actor_rollout_ref), e.g., ["actor.optim.lr", "actor.ppo_micro_batch_size_per_gpu"]
   orchestra_type: search
   use_agent_memory: False
-  random_dropout_ratio: 0.0 # [0, 1]
 
 
 env:
