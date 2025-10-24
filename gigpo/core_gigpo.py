@@ -167,6 +167,7 @@ def compute_gigpo_outcome_advantage(token_level_rewards: torch.Tensor,
                                    mode: str = "mean_norm",
                                    enable_similarity: bool = False,
                                    similarity_thresh: float = 0.95,
+                                   group_by_agent_id: bool = False
                                    ):
     """
     Compute the advantages for GiGPO (https://arxiv.org/abs/2505.10978).
@@ -179,7 +180,7 @@ def compute_gigpo_outcome_advantage(token_level_rewards: torch.Tensor,
         raise ValueError(f"Unknown mode: {mode}")
     
     # Compute episode relative advantages (Eq. 3 in the paper).
-    episode_advantages = episode_norm_reward(token_level_rewards, response_mask, index, traj_index, epsilon, remove_std)
+    episode_advantages = episode_norm_reward(token_level_rewards, response_mask, index, traj_index, epsilon, remove_std, group_by_agent_id)
     
     # Anchor state grouping (Eq. 6 in the paper).
     step_group_uids = build_step_group(anchor_obs, index, enable_similarity, similarity_thresh)
@@ -198,7 +199,7 @@ def episode_norm_reward(token_level_rewards: torch.Tensor,
                         traj_index: np.array,
                         epsilon: float = 1e-6,
                         remove_std: bool = True,
-                        compute_mean_std_cross_steps: bool = True,
+                        group_by_agent_id: bool = False,
                         ):
     """
     Compute episode-level advantage using mean-std normalization for GiGPO.
@@ -216,9 +217,9 @@ def episode_norm_reward(token_level_rewards: torch.Tensor,
             A small value to avoid division by zero.
         remove_std: bool
             If True, the standard deviation is removed from the normalization.
-        compute_mean_std_cross_steps: bool
-            If True (more stable), the mean and std are computed across steps within one group. 
-            If False (i.e., standard episode-level adv), the mean and std are computed across trajectories within one group.
+        group_by_agent_id: bool
+            If True, the mean and std are computed across agent group.
+            If False (i.e., standard trajectory-level GRPO), the mean and std are computed across trajectories within one group.
     
     Returns:
         advantages: `(torch.Tensor)`
@@ -239,7 +240,7 @@ def episode_norm_reward(token_level_rewards: torch.Tensor,
             if (index[i], traj_index[i]) in seen_pairs:
                 continue
             id2score[index[i]].append(scores[i])
-            if not compute_mean_std_cross_steps:
+            if not group_by_agent_id:
                 seen_pairs.add((index[i], traj_index[i]))
 
         for idx in id2score:
