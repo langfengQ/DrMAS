@@ -43,11 +43,6 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         processor: Processor for handling data.
         config (Any): Configuration object containing settings for the orchestra.
     """
-        # Agent type constants
-    OUTPUT_AGENT = "Search Agent"
-    CRITIC_AGENT = "Critic Agent"
-    REFLEXION_AGENT = "Reflexion Agent"
-    MEMORY_AGENT = "Memory Agent"
     def __init__(
         self,
         agent_ids: List[str],
@@ -57,20 +52,7 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         processors: Dict[str, Any] = None,
         config: Any = None,
     ):
-        """Initialize the search multi-agent orchestra.
-        
-        Args:
-            agent_ids: List of agent names to be executed in sequence
-            model_ids: List of model identifiers
-            agents_to_wg_mapping: Mapping from agent names to worker group IDs
-            tokenizers: Dictionary of tokenizers for each worker group
-            processors: Dictionary of processors for each worker group
-            config: Configuration object containing settings for the orchestra
-        """
-        # Import search agents module
         importlib.import_module("agent_system.agent.agents.search")
-
-        # Initialize base class
         super().__init__(
             agent_ids=agent_ids,
             model_ids=model_ids,
@@ -87,29 +69,16 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         
         # The order of agents is the execution order.
         self.agent_order = self.agent_ids
+        self.random_dropout = self.config.agent.random_dropout
+        self.random_dropout_ratio = self.config.agent.random_dropout_ratio
 
-        self.enable_critic = self.CRITIC_AGENT in self.agent_order
-
-        # Loop configuration
+        self.output_agent = "Search Agent"
+        self.critic_agent = "Critic Agent"
+        self.reflexion_agent = "Reflexion Agent"
+        self.enable_critic = self.critic_agent in self.agent_order
+        # if self.agent_order[-1] != "ActionAgent":
+        #     raise ValueError("The last agent must be ActionAgent.")
         self.max_loop_num = 2
-
-    def _should_skip_agent(self, agent_name: str, step: int, loop_i: int) -> bool:
-        """Determine if an agent should be skipped based on conditions."""
-        # Skip reflexion agent on first step or after first loop
-        if agent_name == self.REFLEXION_AGENT:
-            return step == 1 or loop_i != 0
-        # Skip critic agent on last loop
-        if agent_name == self.CRITIC_AGENT and loop_i == self.max_loop_num - 1:
-            return True
-        return False
-
-    def _should_continue_looping(self, approved_vector: Optional[np.ndarray]) -> bool:
-        """Determine if the orchestration should continue looping."""
-        if not self.enable_critic:
-            return False
-        if approved_vector.all():
-            return False
-        return True
 
     def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, active_masks: np.ndarray, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
         # clear and reset multiagent batch buffer
@@ -123,10 +92,18 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
             # run agents sequentially, passing observation and batch
             for name in self.agent_order:
 
-                if self._should_skip_agent(name, step, loop_i):
-                    continue
+                if name == self.reflexion_agent:
+                    if step == 1 or loop_i != 0:
+                        continue
+
+                # skip last time for critic agent
+                if name == self.critic_agent and loop_i == self.max_loop_num - 1:
+                    break
                     
                 agent_active_mask = np.ones(len(gen_batch), dtype=bool)
+                if self.random_dropout and name != self.output_agent:
+                    agent_active_mask = np.random.binomial(1, self.random_dropout_ratio, size=len(gen_batch)).astype(bool)
+
                 agent_active_mask = np.logical_and(agent_active_mask, active_masks).astype(bool)
                 
                 if self.enable_critic:
@@ -146,13 +123,16 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
                 # save the batch to the multiagent buffer
                 self.save_to_buffer(name, batch)
 
-                if name == self.CRITIC_AGENT and self.enable_critic:
-                    approved_vector = self.agents[self.CRITIC_AGENT].update_approved_vector(text_repsonses, approved_vector, agent_active_mask)
-                elif name == self.OUTPUT_AGENT:
+                if name == self.critic_agent and self.enable_critic:
+                    approved_vector = self.agents[self.critic_agent].update_approved_vector(text_repsonses, approved_vector, agent_active_mask)
+                elif name == self.output_agent:
                     text_actions = update_text_action(text_actions, text_repsonses, agent_active_mask)
 
-
-            if not self._should_continue_looping(approved_vector):
+            if not self.enable_critic:
                 break
-            
+            if approved_vector.all():
+                break
+
+        # if len(self.multiagent_batch_buffer) != len(self.agent_order):
+        #     raise Warning("Multiagent output batch buffer length does not match number of agents. This may lead to unexpected behavior.")
         return text_actions, self.multiagent_batch_buffer
