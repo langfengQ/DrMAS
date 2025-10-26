@@ -107,7 +107,7 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         """Determine if the orchestration should continue looping."""
         if not self.enable_critic:
             return False
-        if approved_vector.all():
+        if self.enable_critic and approved_vector is not None and approved_vector.all():
             return False
         return True
 
@@ -116,8 +116,7 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         self.reset_buffer()
         text_actions, team_context, env_obs = self.initialize_context(env_obs)
 
-        if self.enable_critic:
-            approved_vector = np.zeros(len(gen_batch), dtype=bool)  # Vector to track if the action is approved
+        approved_vector = np.zeros(len(gen_batch), dtype=bool) if self.enable_critic else None # Vector to track if the action is approved
 
         for loop_i in range(self.max_loop_num):
             # run agents sequentially, passing observation and batch
