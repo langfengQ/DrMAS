@@ -12,26 +12,22 @@ PROMPT = """
 # Task Introduction
 {env_prompt}
 
-# Your Teammates' Outputs at Step {step}
-{team_context}
-
 # Your Role
-You are a "Search Agent". Your primary responsibility is to generate effective search queries to gather external information that helps answer the question. You can call a search engine by using the format: <search>your query</search>. 
+You are an "Answer Agent". Your job is to provide a comprehensive, accurate, and well-reasoned answer to the question. You should carefully consider all previous search queries, all retrieved information, and integrate them with your own general knowledge to formulate your response.
 
-You should first conduct a reasoning process. This process MUST be enclosed within <think> </think> tags. When reasoning, you should consider the interaction history and your teammates' outputs (if any) as auxiliary context.
-
-After completing your reasoning, provide your final search query enclosed within <search> </search>.
+You should first conduct a reasoning process. This process MUST be enclosed within <think> </think> tags.
+After completing your reasoning, provide your final answer within <answer> </answer> tags. For example, <answer>Beijing</answer>.
 """
 
-@AgentRegistry.register("Search Agent")
-class SearchAgent(BaseAgent):
+@AgentRegistry.register("Answer Agent")
+class AnswerAgent(BaseAgent):
     def __init__(self, wg_id: str, tokenizer: PreTrainedTokenizer, processor, config: Any):
-        super().__init__("Search Agent", PROMPT, wg_id=wg_id, tokenizer=tokenizer, processor=processor, config=config)
-        self.start_tag = "<search>"
-        self.end_tag = "</search>"
-        
+        super().__init__("Answer Agent", PROMPT, wg_id=wg_id, tokenizer=tokenizer, processor=processor, config=config)
+        self.start_tag = "<answer>"
+        self.end_tag = "</answer>"
+
     def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, agent_active_mask, step: int) -> Tuple[DataProto, List[str], List[str]]:
-        """Generate a summary of the conversation history."""
+        """Generate final answer based on all available information."""
         obs = self.build_prompt(env_obs, team_context, step)
         batch = preprocess_batch(gen_batch=gen_batch, 
                                     obs=obs, 
@@ -44,5 +40,5 @@ class SearchAgent(BaseAgent):
         batch.non_tensor_batch['is_action_valid'] = valids
         batch.non_tensor_batch['env_step'] = np.array([step] * len(text_repsonses), dtype=object)
 
-        # team_context = self.postprocess_batch(team_context, text_repsonses)
         return batch, text_repsonses
+

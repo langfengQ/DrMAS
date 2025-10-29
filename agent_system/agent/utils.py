@@ -109,13 +109,14 @@ def build_wg_ids(config):
 
     return wg_to_agents
 
-def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, check_think_tag: bool = False, return_whole_response: bool = False) -> List[str]:
+def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, check_think_tag: bool = False, return_tag: bool = False, return_whole_response: bool = False) -> List[str]:
     """
     An function to process the text_repsonses
     text_repsonses: the list of text_repsonses to be processeed, it is a list of strings.
     start_tag: the start tag to be used for projection, e.g., "<action>"
     end_tag: the end tag to be used for projection, e.g., "</action>
     check_think_tag: whether to check the <think>...</think> tag, default is False.
+    return_tag: whether to return the tag, default is False.
     return_whole_response: whether to return the whole response, default is False.
     """
     valids = [0] * len(text_repsonses)
@@ -132,10 +133,13 @@ def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, 
                 continue
             
             extracted_action = text_repsonses[i][start_idx + len(start_tag):end_idx].strip()
-            if not return_whole_response:
-                text_repsonses[i] = extracted_action
-            else:
+            if return_whole_response:
                 text_repsonses[i] = original_str[:start_idx + len(start_tag)] + extracted_action + original_str[end_idx:]
+            else:
+                if return_tag:
+                    text_repsonses[i] = start_tag + extracted_action + end_tag
+                else:
+                    text_repsonses[i] = extracted_action
 
             valids[i] = 1
 
