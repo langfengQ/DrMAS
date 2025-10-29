@@ -31,17 +31,9 @@ def update_text_action(text_actions: List[str], text_response: List[str], agent_
     return text_actions
 
 class MathMultiAgentOrchestra(BaseOrchestra):
-    """Sequentially run agents, passing observation and batch through each agent.
-    This orchestra runs agents in a chain, where each agent processes the output
-    of the previous agent and passes its output to the next agent.
-    It is useful for scenarios where agents need to work in a sequence, such as
-    in a pipeline or a multi‑step process.
-    Args:
-        agent_ids (List[str]): List of agent names to be executed in sequence.
-        tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
-        processor: Processor for handling data.
-        config (Any): Configuration object containing settings for the orchestra.
-    """
+    SOLVER_AGENT = "Solver Agent"
+    VERIFIER_AGENT = "Verifier Agent"
+
     def __init__(
         self,
         agent_ids: List[str],
@@ -61,36 +53,54 @@ class MathMultiAgentOrchestra(BaseOrchestra):
             config=config,
         )
         if not self.agents:
-            raise ValueError("MathMultiAgentOrchestra requires at least one agent.")
-        
-        # The order of agents is the execution order.
-        self.agent_order = self.agent_ids
-        # if self.agent_order[-1] != "ActionAgent":
-        #     raise ValueError("The last agent must be ActionAgent.")
+            raise ValueError("SolverVerifierMathOrchestra requires at least one agent.")
 
-    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
-        # clear and reset multiagent batch buffer
+        self.agent_order = self.agent_ids
+        self.max_loop_num = getattr(self.config.agent.orchestra.math, "max_loop_num", 3)
+
+    def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, active_masks: np.ndarray, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
         self.reset_buffer()
         text_actions, team_context, env_obs = self.initialize_context(env_obs)
 
-        # run agents sequentially, passing observation and batch
-        for name in self.agent_order:
-            actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[name]]
-            batch, text_repsonses = self.agents[name].call(gen_batch=gen_batch, 
-                                                            env_obs=env_obs, 
-                                                            team_context=team_context, 
-                                                            actor_rollout_wg=actor_rollout_wg, 
-                                                            step=step)
-            if batch is None:
-                continue  # skip if the agent did not produce a batch
-            
-            team_context = update_team_context(name, team_context, text_repsonses)
-            # save the batch to the multiagent buffer
-            self.save_to_buffer(name, batch)
+        approved_vector = np.zeros(len(gen_batch), dtype=bool)
 
-            if name == "Math Agent":
-                text_actions = text_repsonses
+        for loop_i in range(self.max_loop_num):
+            # Solver runs on not-yet-approved items
+            solver_mask = np.logical_and(active_masks, np.logical_not(approved_vector)).astype(bool)
+            if solver_mask.any() and self.SOLVER_AGENT in self.agents:
+                actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.SOLVER_AGENT]]
+                batch, text_repsonses = self.agents[self.SOLVER_AGENT].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=actor_rollout_wg,
+                    agent_active_mask=solver_mask,
+                    step=step,
+                )
+                team_context = update_team_context(self.SOLVER_AGENT, team_context, text_repsonses, solver_mask)
+                self.save_to_buffer(self.SOLVER_AGENT, batch)
+                text_actions = update_text_action(text_actions, text_repsonses, solver_mask)
 
-        # if len(self.multiagent_batch_buffer) != len(self.agent_order):
-        #     raise Warning("Multiagent output batch buffer length does not match number of agents. This may lead to unexpected behavior.")
+            # Verifier checks those items (skip the last loop)
+            if loop_i != self.max_loop_num - 1:
+                verifier_mask = np.logical_and(active_masks, np.logical_not(approved_vector)).astype(bool)
+                if verifier_mask.any() and self.VERIFIER_AGENT in self.agents:
+                    actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.VERIFIER_AGENT]]
+                    batch, text_repsonses = self.agents[self.VERIFIER_AGENT].call(
+                        gen_batch=gen_batch,
+                        env_obs=env_obs,
+                        team_context=team_context,
+                        actor_rollout_wg=actor_rollout_wg,
+                        agent_active_mask=verifier_mask,
+                        step=step,
+                    )
+                    team_context = update_team_context(self.VERIFIER_AGENT, team_context, text_repsonses, verifier_mask)
+                    self.save_to_buffer(self.VERIFIER_AGENT, batch)
+
+                    # Update approvals
+                    approved_vector = self.agents[self.VERIFIER_AGENT].update_approved_vector(text_repsonses, approved_vector, verifier_mask)
+
+            if approved_vector.all():
+                break
+
         return text_actions, self.multiagent_batch_buffer
