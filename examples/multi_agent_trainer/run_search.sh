@@ -1,8 +1,10 @@
 set -x
 
+export CUDA_VISIBLE_DEVICES=2,3
+
 ##################### Agent Configurations #####################
-agent_ids='["Reflexion Agent","Search Agent","Critic Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
-model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-3B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
+agent_ids='["Verifier Agent","Search Agent","Answer Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
+model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
 model_sharing=False
 
 orchestra_type=search
@@ -10,7 +12,7 @@ orchestra_type=search
 # Agent-specific parameter override (only support actor_rollout_ref)
 agent_specific_parameters='["actor.optim.lr","actor.ppo_micro_batch_size_per_gpu"]'
 actor_optim_lr='[1e-6,1e-6,1e-6]'
-actor_ppo_micro_batch_size_per_gpu='[4,8,4]'
+actor_ppo_micro_batch_size_per_gpu='[4,8,8]'
 
 ##################### Training Configurations #################
 
@@ -26,7 +28,7 @@ max_response_length=1024
 ###################### Algorithm Configurations #################
 
 algorithm=grpo
-group_by_agent_id=False
+group_by_agent_id=True
 
 ####################### Other Configurations #####################
 
@@ -36,6 +38,8 @@ agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:
 combined_tag="${agent_name_tag}_${model_name_tag}"
 
 experiment_name="${combined_tag}_share${model_sharing}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
+
+default_local_dir="/mnt/raid/data/langf/checkpoints/multiagent_search/${experiment_name}"
 
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
 VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
@@ -92,9 +96,10 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='multiagent_search' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=2 \
+    trainer.default_local_dir="$default_local_dir" \
     trainer.nnodes=1 \
-    trainer.save_freq=-1 \
-    trainer.test_freq=500 \
+    trainer.save_freq=20 \
+    trainer.test_freq=200 \
     trainer.total_epochs=1 \
     trainer.val_before_train=False $@
