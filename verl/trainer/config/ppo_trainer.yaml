@@ -19,6 +19,7 @@ data:
   image_key: images
   video_key: videos
   trust_remote_code: False  # main_ppo will check this config to determine whether to use remote code for tokenizer
+  apply_chat_template_kwargs: {}
   custom_cls:
       path: null
       name: null
@@ -297,7 +298,9 @@ agent: # only for multi-agent training
   agent_specific_parameters: null # Optional: define agent-specific parameter overrides (only support actor_rollout_ref), e.g., ["actor.optim.lr", "actor.ppo_micro_batch_size_per_gpu"]
   orchestra_type: search
   use_agent_memory: False
-
+  orchestra:
+    math:
+      max_loop_num: 3
 
 env:
   env_name: alfworld/AlfredTWEnv
