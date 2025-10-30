@@ -81,24 +81,25 @@ class MathMultiAgentOrchestra(BaseOrchestra):
                 self.save_to_buffer(self.SOLVER_AGENT, batch)
                 text_actions = update_text_action(text_actions, text_repsonses, solver_mask)
 
+            if loop_i == self.max_loop_num - 1:
+                break
             # Verifier checks those items (skip the last loop)
-            if loop_i != self.max_loop_num - 1:
-                verifier_mask = np.logical_and(active_masks, np.logical_not(approved_vector)).astype(bool)
-                if verifier_mask.any() and self.VERIFIER_AGENT in self.agents:
-                    actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.VERIFIER_AGENT]]
-                    batch, text_repsonses = self.agents[self.VERIFIER_AGENT].call(
-                        gen_batch=gen_batch,
-                        env_obs=env_obs,
-                        team_context=team_context,
-                        actor_rollout_wg=actor_rollout_wg,
-                        agent_active_mask=verifier_mask,
-                        step=step,
-                    )
-                    team_context = update_team_context(self.VERIFIER_AGENT, team_context, text_repsonses, verifier_mask)
-                    self.save_to_buffer(self.VERIFIER_AGENT, batch)
+            verifier_mask = np.logical_and(active_masks, np.logical_not(approved_vector)).astype(bool)
+            if verifier_mask.any() and self.VERIFIER_AGENT in self.agents:
+                actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.VERIFIER_AGENT]]
+                batch, text_repsonses = self.agents[self.VERIFIER_AGENT].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=actor_rollout_wg,
+                    agent_active_mask=verifier_mask,
+                    step=step,
+                )
+                team_context = update_team_context(self.VERIFIER_AGENT, team_context, text_repsonses, verifier_mask)
+                self.save_to_buffer(self.VERIFIER_AGENT, batch)
 
-                    # Update approvals
-                    approved_vector = self.agents[self.VERIFIER_AGENT].update_approved_vector(text_repsonses, approved_vector, verifier_mask)
+                # Update approvals
+                approved_vector = self.agents[self.VERIFIER_AGENT].update_approved_vector(text_repsonses, approved_vector, verifier_mask)
 
             if approved_vector.all():
                 break

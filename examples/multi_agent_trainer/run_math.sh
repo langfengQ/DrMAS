@@ -1,9 +1,9 @@
 set -x
-export CUDA_VISIBLE_DEVICES=6,7
+export CUDA_VISIBLE_DEVICES=4,5
 
 ##################### Agent Configurations #####################
-agent_ids='["Solver Agent","Verifier Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
-model_ids='["Qwen/Qwen3-1.7B","Qwen/Qwen2.5-3B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
+agent_ids='["Solver Agent","Verifier Agent"]'
+model_ids='["Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B"]'
 model_sharing=False
 
 orchestra_type=math
@@ -16,9 +16,9 @@ actor_ppo_micro_batch_size_per_gpu='[2,2]'
 ##################### Training Configurations #################
 
 train_data_size=32
-val_data_size=256
+val_data_size=80
 group_size=8
-ppo_mini_update_num=4
+ppo_mini_update_num=1
 
 max_prompt_length=8000
 max_response_length=4000
@@ -40,7 +40,7 @@ combined_tag="${agent_name_tag}_${model_name_tag}"
 experiment_name="${combined_tag}_share${model_sharing}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
 
 TRAIN_DATA="/home/langfeng/data/dapo_filter/train.parquet"
-VAL_DATA="/home/langfeng/data/dapo_filter/train.parquet"
+VAL_DATA="/home/langfeng/data/dapo_filter/test.parquet"
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
     data.train_files=$TRAIN_DATA \
@@ -59,9 +59,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=$ppo_mini_update_num \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$actor_ppo_micro_batch_size_per_gpu \
-    actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.001 \
-    actor_rollout_ref.actor.kl_loss_type=low_var_kl \
+    actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
@@ -76,7 +74,6 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
-    algorithm.use_kl_in_reward=False \
     algorithm.group_by_agent_id=$group_by_agent_id \
     env.env_name=math \
     env.seed=0 \
@@ -92,7 +89,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name="$experiment_name" \
     trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
-    trainer.save_freq=-1 \
-    trainer.test_freq=500 \
+    trainer.save_freq=100 \
+    trainer.test_freq=50 \
     trainer.total_epochs=10 \
-    trainer.val_before_train=False $@
+    trainer.val_before_train=True $@

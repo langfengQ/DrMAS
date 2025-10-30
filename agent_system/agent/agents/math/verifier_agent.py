@@ -64,7 +64,7 @@ class VerifierAgent(BaseAgent):
                 elif "<verify>reject</verify>" in text_repsonses[i]:
                     new_approved_vector.append(False)
                 else:
-                    new_approved_vector.append(False)
+                    new_approved_vector.append(True)
             else:
                 new_approved_vector.append(True)
 

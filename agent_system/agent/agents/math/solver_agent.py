@@ -16,7 +16,9 @@ SOLVER_PROMPT = """
 {team_context}
 
 # Your Role
-You are a "Solver Agent". Your job is to carefully reason through the given math problem step by step and derive the correct result. You should present the final answer within \\boxed{{}}.
+You are a "Solver Agent". Your job is to carefully reason through the math problem step by step and derive the correct answer. When reasoning, consider your teammates' outputs (if any) as auxiliary context. 
+
+You should give the final answer within \\boxed{{}}.
 """
 
 
