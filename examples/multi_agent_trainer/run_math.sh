@@ -7,6 +7,7 @@ model_ids='["Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B"]'
 model_sharing=False
 
 orchestra_type=math
+max_loop_num=3
 
 # Agent-specific parameter override (only support actor_rollout_ref)
 agent_specific_parameters='["actor.optim.lr","actor.ppo_micro_batch_size_per_gpu"]'
@@ -37,7 +38,7 @@ agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:
 
 combined_tag="${agent_name_tag}_${model_name_tag}"
 
-experiment_name="${combined_tag}_share${model_sharing}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
+experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_loop_num}loop_${max_prompt_length}prompt_${max_response_length}res"
 
 TRAIN_DATA="/home/langfeng/data/dapo_filter/train.parquet"
 VAL_DATA="/home/langfeng/data/dapo_filter/test.parquet"
@@ -83,6 +84,7 @@ python3 -m verl.trainer.main_ppo \
     agent.model_sharing=$model_sharing \
     agent.agent_specific_parameters=$agent_specific_parameters \
     agent.orchestra_type=$orchestra_type \
+    agent.orchestra.math.max_loop_num=$max_loop_num \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='multiagent_math' \

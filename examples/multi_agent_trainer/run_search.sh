@@ -1,8 +1,10 @@
 set -x
 
+export CUDA_VISIBLE_DEVICES=6,7
+
 ##################### Agent Configurations #####################
-agent_ids='["Reflexion Agent","Search Agent","Critic Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
-model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-3B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
+agent_ids='["Verifier Agent","Search Agent","Answer Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
+model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
 model_sharing=False
 
 orchestra_type=search
@@ -10,7 +12,7 @@ orchestra_type=search
 # Agent-specific parameter override (only support actor_rollout_ref)
 agent_specific_parameters='["actor.optim.lr","actor.ppo_micro_batch_size_per_gpu"]'
 actor_optim_lr='[1e-6,1e-6,1e-6]'
-actor_ppo_micro_batch_size_per_gpu='[4,8,4]'
+actor_ppo_micro_batch_size_per_gpu='[4,8,8]'
 
 ##################### Training Configurations #################
 
@@ -18,15 +20,15 @@ train_data_size=256
 val_data_size=512
 group_size=5
 max_turn=4
-ppo_mini_update_num=10
+ppo_mini_update_num=5
 
 max_prompt_length=4096
-max_response_length=1024
+max_response_length=800
 
 ###################### Algorithm Configurations #################
 
 algorithm=grpo
-group_by_agent_id=False
+group_by_agent_id=True
 
 ####################### Other Configurations #####################
 
@@ -35,8 +37,8 @@ agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:
 
 combined_tag="${agent_name_tag}_${model_name_tag}"
 
-experiment_name="${combined_tag}_share${model_sharing}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
-
+experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
+default_local_dir="/mnt/raid/data/langf/checkpoints/multiagent_search/${experiment_name}"
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
 VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
 
@@ -57,9 +59,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=$ppo_mini_update_num \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$actor_ppo_micro_batch_size_per_gpu \
-    actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.001 \
-    actor_rollout_ref.actor.kl_loss_type=low_var_kl \
+    actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
@@ -70,11 +70,8 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
-    algorithm.use_kl_in_reward=False \
     algorithm.gamma=0.95 \
     algorithm.group_by_agent_id=$group_by_agent_id \
     env.env_name=search \
@@ -92,9 +89,10 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='multiagent_search' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=2 \
+    trainer.default_local_dir="$default_local_dir" \
     trainer.nnodes=1 \
-    trainer.save_freq=-1 \
-    trainer.test_freq=500 \
+    trainer.save_freq=20 \
+    trainer.test_freq=200 \
     trainer.total_epochs=1 \
     trainer.val_before_train=False $@

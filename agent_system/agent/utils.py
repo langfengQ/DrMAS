@@ -70,21 +70,27 @@ def build_wg_ids(config):
     total_agent_num = len(agent_ids)
     if not model_sharing:
         wg_to_agents = {}
+        agent_port = 0
         for idx in range(total_agent_num):
             agent_id = agent_ids[idx]
             model_id = model_ids[idx]
             per_config = _set_specific_parameter(base_config, idx, total_agent_num, agent_specific_parameters)
+            per_config.rollout["agent_port"] = agent_port
             norm_agent = normalize_model_id(agent_id)
             norm_model = normalize_model_id(model_id)
             wg_id = f"{norm_model}_{norm_agent}"
             wg_to_agents[wg_id] = [{"agent_id": agent_id, "model_id": model_id, "config_actor_rollout_ref": per_config}]
+            agent_port += 1
     else:
         model_to_agents = defaultdict(list)
+        agent_port = 0
         for idx in range(total_agent_num):
             agent_id = agent_ids[idx]
             model_id = model_ids[idx]
             per_config = _set_specific_parameter(base_config, idx, total_agent_num, agent_specific_parameters)
+            per_config.rollout["agent_port"] = agent_port
             model_to_agents[model_id].append({"agent_id": agent_id, "config_actor_rollout_ref": per_config})
+            agent_port += 1
 
         wg_to_agents = {}
         for model_id, agents_configs in model_to_agents.items():
@@ -109,13 +115,14 @@ def build_wg_ids(config):
 
     return wg_to_agents
 
-def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, check_think_tag: bool = False, return_whole_response: bool = False) -> List[str]:
+def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, check_think_tag: bool = False, return_tag: bool = False, return_whole_response: bool = False) -> List[str]:
     """
     An function to process the text_repsonses
     text_repsonses: the list of text_repsonses to be processeed, it is a list of strings.
     start_tag: the start tag to be used for projection, e.g., "<action>"
     end_tag: the end tag to be used for projection, e.g., "</action>
     check_think_tag: whether to check the <think>...</think> tag, default is False.
+    return_tag: whether to return the tag, default is False.
     return_whole_response: whether to return the whole response, default is False.
     """
     valids = [0] * len(text_repsonses)
@@ -132,10 +139,13 @@ def general_projection(text_repsonses: List[str], start_tag: str, end_tag: str, 
                 continue
             
             extracted_action = text_repsonses[i][start_idx + len(start_tag):end_idx].strip()
-            if not return_whole_response:
-                text_repsonses[i] = extracted_action
-            else:
+            if return_whole_response:
                 text_repsonses[i] = original_str[:start_idx + len(start_tag)] + extracted_action + original_str[end_idx:]
+            else:
+                if return_tag:
+                    text_repsonses[i] = start_tag + extracted_action + end_tag
+                else:
+                    text_repsonses[i] = extracted_action
 
             valids[i] = 1
 
