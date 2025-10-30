@@ -9,7 +9,7 @@ pip3 install flash-attn==2.7.4.post1 --no-build-isolation
 
 pip3 install -e .
 
-pip install -r requirements_sglang.txt
+pip3 install -r requirements_sglang.txt
 ```
 
 ## Install Supported Environments
@@ -71,6 +71,12 @@ conda activate retriever
 bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log 
 ```
 
+### 2. Math
+Prepare dataset:
+```bash
+cd repo_root/
+python examples/data_preprocess/dapo_filter.py
+```
 
 ### 2. ALFWorld
 Install with pip:

@@ -1,6 +1,8 @@
 # agent_system/agent/agents/__init__.py
-from .math_agent import MathAgent
+from .solver_agent import SolverAgent
+from .verifier_agent import VerifierAgent
 
 __all__ = [
-    "MathAgent",
+    "SolverAgent",
+    "VerifierAgent",
 ]
