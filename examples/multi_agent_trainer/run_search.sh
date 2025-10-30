@@ -1,6 +1,6 @@
 set -x
 
-export CUDA_VISIBLE_DEVICES=2,3
+export CUDA_VISIBLE_DEVICES=6,7
 
 ##################### Agent Configurations #####################
 agent_ids='["Verifier Agent","Search Agent","Answer Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
@@ -20,10 +20,10 @@ train_data_size=256
 val_data_size=512
 group_size=5
 max_turn=4
-ppo_mini_update_num=10
+ppo_mini_update_num=5
 
 max_prompt_length=4096
-max_response_length=1024
+max_response_length=800
 
 ###################### Algorithm Configurations #################
 
@@ -37,10 +37,8 @@ agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:
 
 combined_tag="${agent_name_tag}_${model_name_tag}"
 
-experiment_name="${combined_tag}_share${model_sharing}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
-
+experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
 default_local_dir="/mnt/raid/data/langf/checkpoints/multiagent_search/${experiment_name}"
-
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
 VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
 
@@ -61,9 +59,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=$ppo_mini_update_num \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$actor_ppo_micro_batch_size_per_gpu \
-    actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.001 \
-    actor_rollout_ref.actor.kl_loss_type=low_var_kl \
+    actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
@@ -74,11 +70,8 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
-    algorithm.use_kl_in_reward=False \
     algorithm.gamma=0.95 \
     algorithm.group_by_agent_id=$group_by_agent_id \
     env.env_name=search \

@@ -70,21 +70,27 @@ def build_wg_ids(config):
     total_agent_num = len(agent_ids)
     if not model_sharing:
         wg_to_agents = {}
+        agent_port = 0
         for idx in range(total_agent_num):
             agent_id = agent_ids[idx]
             model_id = model_ids[idx]
             per_config = _set_specific_parameter(base_config, idx, total_agent_num, agent_specific_parameters)
+            per_config.rollout["agent_port"] = agent_port
             norm_agent = normalize_model_id(agent_id)
             norm_model = normalize_model_id(model_id)
             wg_id = f"{norm_model}_{norm_agent}"
             wg_to_agents[wg_id] = [{"agent_id": agent_id, "model_id": model_id, "config_actor_rollout_ref": per_config}]
+            agent_port += 1
     else:
         model_to_agents = defaultdict(list)
+        agent_port = 0
         for idx in range(total_agent_num):
             agent_id = agent_ids[idx]
             model_id = model_ids[idx]
             per_config = _set_specific_parameter(base_config, idx, total_agent_num, agent_specific_parameters)
+            per_config.rollout["agent_port"] = agent_port
             model_to_agents[model_id].append({"agent_id": agent_id, "config_actor_rollout_ref": per_config})
+            agent_port += 1
 
         wg_to_agents = {}
         for model_id, agents_configs in model_to_agents.items():
