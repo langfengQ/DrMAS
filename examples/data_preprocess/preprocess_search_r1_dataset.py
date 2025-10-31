@@ -102,6 +102,31 @@ def process_single_row(row, current_split_name, row_index):
     )
 
 
+def sample_by_data_source(df, samples_per_source=30):
+    """
+    Take the first N rows from each data_source in the DataFrame.
+
+    Args:
+        df: Input DataFrame
+        samples_per_source: Number of rows to take from each data_source
+
+    Returns:
+        pd.DataFrame: Sampled DataFrame with first N rows from each data_source
+    """
+    sampled_dfs = []
+    
+    for data_source in df['data_source'].unique():
+        source_df = df[df['data_source'] == data_source]
+        n_samples = min(samples_per_source, len(source_df))
+        
+        # Take the first n_samples rows instead of random sampling
+        sampled = source_df.head(n_samples)
+        sampled_dfs.append(sampled)
+        
+        logger.info(f"Took first {n_samples} rows from data_source '{data_source}' (total available: {len(source_df)})")
+    
+    return pd.concat(sampled_dfs, ignore_index=True)
+
 def main():
     local_save_dir = os.path.expanduser(args.local_dir)
     os.makedirs(local_save_dir, exist_ok=True)
@@ -128,6 +153,12 @@ def main():
                 # Load and process Parquet file
                 df_raw = pd.read_parquet(local_parquet_filepath)
                 logger.info(f"Loaded {len(df_raw)} rows from {parquet_filename}")
+
+                # Sample 30 rows per data_source for test split
+                if split == "test" and args.samples_per_source > 0:
+                    logger.info(f"Sampling {args.samples_per_source} rows per data_source for test split...")
+                    df_raw = sample_by_data_source(df_raw, samples_per_source=args.samples_per_source)
+                    logger.info(f"After sampling: {len(df_raw)} rows remain")
 
                 def apply_process_row(row, split_name=split):
                     return process_single_row(row, current_split_name=split_name, row_index=row.name)
@@ -172,7 +203,12 @@ if __name__ == "__main__":
         help="Local directory to save the processed Parquet files.",
     )
     parser.add_argument("--hdfs_dir", default=None, help="Optional HDFS directory to copy the Parquet files to.")
-
+    parser.add_argument(
+        "--samples_per_source",
+        type=int,
+        default=-1,
+        help="Number of samples to take from each data_source in test split (default: 30)."
+    )
     args = parser.parse_args()
 
     # System and user content configuration

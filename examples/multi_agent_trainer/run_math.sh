@@ -1,5 +1,9 @@
 set -x
-export CUDA_VISIBLE_DEVICES=4,5
+
+###################### Algorithm Configurations #################
+
+algorithm=grpo
+group_by_agent_id=True
 
 ##################### Agent Configurations #####################
 agent_ids='["Solver Agent","Verifier Agent"]'
@@ -21,15 +25,8 @@ val_data_size=80
 group_size=8
 ppo_mini_update_num=1
 
-max_prompt_length=8000
-max_response_length=4000
-
-
-###################### Algorithm Configurations #################
-
-algorithm=grpo
-group_by_agent_id=True
-
+max_prompt_length=8192
+max_response_length=4096
 
 ####################### Other Configurations #####################
 
