@@ -32,15 +32,17 @@ def update_text_action(text_actions: List[str], text_response: List[str], agent_
 
 
 class SearchMultiAgentOrchestra(BaseOrchestra):
-    """Sequentially run agents, passing observation and batch through each agent.
-    This orchestra runs agents in a chain, where each agent processes the output
-    of the previous agent and passes its output to the next agent.
-    
-    The new architecture consists of:
+    """
+    The architecture consists of:
     1. Search Agent: Generates search queries to gather information
     2. Verifier Agent: Determines if information is sufficient to answer
     3. Answer Agent: Generates final answer when information is sufficient
     
+
+   Verifier Agent (Router) → Evaluates if historical information is sufficient
+        ├─ If "no" → 2a. Search Agent → Generates search query → Return search query
+        └─ If "yes" → 2b. Answer Agent → Generates answer → Return answer
+
     Args:
         agent_ids (List[str]): List of agent names to be executed in sequence.
         tokenizer (PreTrainedTokenizer): Tokenizer for processing text.

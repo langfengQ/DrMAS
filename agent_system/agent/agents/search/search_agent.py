@@ -16,11 +16,9 @@ PROMPT = """
 {team_context}
 
 # Your Role
-You are a "Search Agent". Your primary responsibility is to generate effective search queries to gather external information that helps answer the question. You can call a search engine by using the format: <search>your query</search>. 
+You are a "Search Agent". Your primary responsibility is to call a search engine to gather external information that helps answer a given question. The search engine should be invoked using the format: <search>your query</search>. 
 
-You should first conduct a reasoning process. This process MUST be enclosed within <think> </think> tags. When reasoning, you should consider the interaction history and your teammates' outputs (if any) as auxiliary context.
-
-After completing your reasoning, provide your final search query enclosed within <search> </search>.
+Before conducting the search, you should reason step-by-step about the question, any previous queries, and retrieved information, as well as your teammates' outputs (if available). This reasoning process MUST be enclosed within <think> </think> tags. Once you've finished your reasoning, provide your final search query enclosed within <search> </search>.
 """
 
 @AgentRegistry.register("Search Agent")
