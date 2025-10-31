@@ -1,6 +1,9 @@
 set -x
 
-export CUDA_VISIBLE_DEVICES=6,7
+###################### Algorithm Configurations #################
+
+algorithm=grpo
+group_by_agent_id=False
 
 ##################### Agent Configurations #####################
 agent_ids='["Verifier Agent","Search Agent","Answer Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
@@ -20,15 +23,10 @@ train_data_size=256
 val_data_size=512
 group_size=5
 max_turn=4
-ppo_mini_update_num=5
+ppo_mini_update_num=10
 
 max_prompt_length=4096
-max_response_length=800
-
-###################### Algorithm Configurations #################
-
-algorithm=grpo
-group_by_agent_id=True
+max_response_length=1024
 
 ####################### Other Configurations #####################
 
@@ -38,7 +36,7 @@ agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:
 combined_tag="${agent_name_tag}_${model_name_tag}"
 
 experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
-default_local_dir="/mnt/raid/data/langf/checkpoints/multiagent_search/${experiment_name}"
+
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
 VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
 
@@ -90,9 +88,8 @@ python3 -m verl.trainer.main_ppo \
     trainer.project_name='multiagent_search' \
     trainer.experiment_name="$experiment_name" \
     trainer.n_gpus_per_node=2 \
-    trainer.default_local_dir="$default_local_dir" \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
-    trainer.test_freq=200 \
+    trainer.test_freq=20 \
     trainer.total_epochs=1 \
-    trainer.val_before_train=False $@
+    trainer.val_before_train=True $@
