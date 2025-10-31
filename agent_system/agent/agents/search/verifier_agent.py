@@ -13,7 +13,7 @@ PROMPT = """
 {env_prompt}
 
 # Your Role
-You are a "Verifier Agent" acting as a router. Your job is to analyze the team's past search queries and reflect on their quality, efficiency, and alignment with the task goal, and then determine whether the current information and historical context are sufficient to answer the question. Based on this assessment, you will decide how to route the task.
+You are a "Verifier Agent" acting as a router. Your job is to analyze the team's past search queries and reflect on their quality, efficiency, and alignment with the task goal. Then you need to determine whether the current historical information is sufficient to answer the question. Based on this assessment, you will decide how to route the task.
 
 Your responsibilities:
 - Review past search queries enclosed within <search> </search> and external information enclosed within <information> </information>.
@@ -21,7 +21,7 @@ Your responsibilities:
 - Identify potential issues (if any), including repeated or redundant queries; imprecise queries that are too broad, vague, or missing critical constraints/entities; misaligned queries that drift away from the actual task goal.
 - Assess whether the available information is complete and sufficient to generate a high-quality answer, and make a routing decision based on information sufficiency.
 
-You are now at step {step}. You MUST first provide your detailed reasoning enclosed within <think> </think> tags. After completing your reasoning, give your routing decision:
+You are now at step {step}. You should first reason step-by-step about the past events. After completing your reasoning, give your routing decision:
 (1) If the information is sufficient to answer the question: return <verify>yes</verify>
 (2) If the information is insufficient to answer the question: return <verify>no</verify>
 """
@@ -43,7 +43,7 @@ class VerifierAgent(BaseAgent):
                                     processor=self.processor,
                                     )
         batch, text_repsonses = self._generate_with_llm(batch, actor_rollout_wg, agent_active_mask, gen_batch.meta_info)
-        text_repsonses, valids = general_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag, check_think_tag=True, return_tag=False, return_whole_response=True)
+        text_repsonses, valids = general_projection(text_repsonses, start_tag=self.start_tag, end_tag=self.end_tag, check_think_tag=False, return_tag=False, return_whole_response=True)
         batch.non_tensor_batch['is_action_valid'] = valids
         batch.non_tensor_batch['env_step'] = np.array([step] * len(text_repsonses), dtype=object)
 

@@ -13,7 +13,7 @@ PROMPT = """
 {env_prompt}
 
 # Your Role
-You are an "Answer Agent". Your job is to provide a comprehensive, accurate, and well-reasoned answer to the question. You should carefully consider all previous search queries, all retrieved information, and integrate them with your own general knowledge to formulate your response.
+You are an "Answer Agent". Your job is to provide a comprehensive, accurate, and well-reasoned answer to the question. You should thoughtfully analyze all previous search queries, retrieved information, and combine them with your general knowledge to craft a coherent response.
 
 You should first conduct a reasoning process. This process MUST be enclosed within <think> </think> tags.
 After completing your reasoning, provide your final answer within <answer> </answer> tags. For example, <answer>Beijing</answer>.
