@@ -1,5 +1,5 @@
 set -x
-
+export CUDA_VISIBLE_DEVICES=4,5
 ###################### Algorithm Configurations #################
 
 algorithm=grpo
@@ -7,11 +7,11 @@ group_by_agent_id=True
 
 ##################### Agent Configurations #####################
 agent_ids='["Solver Agent","Verifier Agent"]'
-model_ids='["Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B"]'
+model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
 model_sharing=False
 
 orchestra_type=math
-max_loop_num=3
+max_loop_num=2
 
 # Agent-specific parameter override (only support actor_rollout_ref)
 agent_specific_parameters='["actor.optim.lr","actor.ppo_micro_batch_size_per_gpu"]'
@@ -21,7 +21,7 @@ actor_ppo_micro_batch_size_per_gpu='[2,2]'
 ##################### Training Configurations #################
 
 train_data_size=32
-val_data_size=80
+val_data_size=110
 group_size=8
 ppo_mini_update_num=1
 
@@ -60,7 +60,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
@@ -68,8 +68,6 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=8 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     algorithm.group_by_agent_id=$group_by_agent_id \
@@ -88,7 +86,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name="$experiment_name" \
     trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
-    trainer.save_freq=100 \
+    trainer.save_freq=50 \
     trainer.test_freq=50 \
     trainer.total_epochs=10 \
     trainer.val_before_train=True $@
