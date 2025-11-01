@@ -74,7 +74,7 @@ bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log
 ```
 
 ### 2. Math
-Prepare the dataset (test data contains 50 examples from MATH500 and 30 examples from AIME2024):
+Prepare the dataset (test data contains 50 examples from MATH500, 30 examples from AIME2024, and 30 examples from AIME2025):
 ```bash
 cd repo_root/
 python examples/data_preprocess/dapo_filter.py

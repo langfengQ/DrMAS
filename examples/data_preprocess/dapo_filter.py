@@ -22,6 +22,7 @@ if __name__ == "__main__":
 
     train_dataset = datasets.load_dataset("aaabiao/dapo_filter", split="train")
     test_dataset_aime24 = datasets.load_dataset("HuggingFaceH4/aime_2024", split="train")
+    test_dataset_aime25 = datasets.load_dataset("MathArena/aime_2025", split="train")
     test_dataset_math500 = datasets.load_dataset("HuggingFaceH4/MATH-500", split="test")
     test_dataset_math500 = test_dataset_math500.select(range(50))
     # instruction_following = (
@@ -73,6 +74,9 @@ if __name__ == "__main__":
             question = example.pop("problem")
             ability = "math"
             ground_truth = example.pop("answer")
+            # change type of ground_truth to string if it is not
+            if not isinstance(ground_truth, str):
+                ground_truth = str(ground_truth)
             data = {
                 "data_source": data_source,
                 "ability": ability,
@@ -98,12 +102,13 @@ if __name__ == "__main__":
 
     train_dataset = train_dataset.map(function=make_map_fn("train", "dapo_filter"), with_indices=True)
     test_dataset_aime24 = test_dataset_aime24.map(function=make_map_fn_test("test", "aime24"), with_indices=True)
+    test_dataset_aime25 = test_dataset_aime25.map(function=make_map_fn_test("test", "aime25"), with_indices=True)
     test_dataset_math500 = test_dataset_math500.map(function=make_map_fn_test("test", "math500"), with_indices=True)
 
     local_dir = args.local_dir
     hdfs_dir = args.hdfs_dir
 
-    test_dataset = concatenate_datasets([test_dataset_aime24, test_dataset_math500])
+    test_dataset = concatenate_datasets([test_dataset_aime24, test_dataset_aime25, test_dataset_math500])
     print(f"Combined test_dataset length: {len(test_dataset)}")
 
     train_dataset.to_parquet(os.path.join(local_dir, "train.parquet"))
