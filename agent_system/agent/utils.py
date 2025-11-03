@@ -83,18 +83,17 @@ def build_wg_ids(config):
             agent_port += 1
     else:
         model_to_agents = defaultdict(list)
-        agent_port = 0
         for idx in range(total_agent_num):
             agent_id = agent_ids[idx]
             model_id = model_ids[idx]
             per_config = _set_specific_parameter(base_config, idx, total_agent_num, agent_specific_parameters)
-            per_config.rollout["agent_port"] = agent_port
             model_to_agents[model_id].append({"agent_id": agent_id, "config_actor_rollout_ref": per_config})
-            agent_port += 1
 
         wg_to_agents = {}
+        agent_port = 0
         for model_id, agents_configs in model_to_agents.items():
-
+            for ac in agents_configs:
+                ac["config_actor_rollout_ref"].rollout["agent_port"] = agent_port
             ref_cfg = agents_configs[0]["config_actor_rollout_ref"]
             for ac in agents_configs[1:]:
                 assert omega_equal_resolved(ref_cfg, ac["config_actor_rollout_ref"]), (
@@ -112,6 +111,7 @@ def build_wg_ids(config):
                 }
                 for ac in agents_configs
             ]
+            agent_port += 1
 
     return wg_to_agents
 
