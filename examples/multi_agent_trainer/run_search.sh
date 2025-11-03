@@ -26,7 +26,7 @@ max_turn=4
 ppo_mini_update_num=10
 
 max_prompt_length=4096
-max_response_length=800
+max_response_length=1024
 
 ####################### Other Configurations #####################
 
@@ -35,7 +35,7 @@ agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:
 
 combined_tag="${agent_name_tag}_${model_name_tag}"
 
-experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
+experiment_name="${combined_tag}_share${model_sharing}_warmup80_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
 
 default_local_dir="/mnt/raid/data/langf/checkpoints/multiagent_search/${experiment_name}"
 
@@ -55,6 +55,7 @@ python3 -m verl.trainer.main_ppo \
     data.return_raw_chat=True \
     actor_rollout_ref.model.path=null \
     actor_rollout_ref.actor.optim.lr=$actor_optim_lr \
+    actor_rollout_ref.actor.optim.lr_warmup_steps=80 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=$ppo_mini_update_num \
