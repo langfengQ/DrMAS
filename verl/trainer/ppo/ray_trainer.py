@@ -483,11 +483,31 @@ class RayPPOTrainer:
         else:
             raise NotImplementedError
 
-        self._validate_config()
+        self._validate_multi_agent_config()
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
+    
 
-    def _validate_config(self):
-        config = self.config
+    def _validate_multi_agent_config(self):
+        """Validate configuration for each agent after agent-specific parameters are applied."""
+        from omegaconf import OmegaConf
+        
+        for wg_id, agents_configs in self.wg_to_agents_mapping.items():
+            for ac in agents_configs:
+                agent_id = ac.get("agent_id", "unknown")
+                # Create a temporary config by merging agent-specific actor_rollout_ref with base config
+                temp_config = OmegaConf.create(OmegaConf.to_container(self.config, resolve=True))
+                # Replace actor_rollout_ref with agent-specific config
+                temp_config.actor_rollout_ref = ac["config_actor_rollout_ref"]
+                # Validate this agent's config
+                try:
+                    self._validate_config(temp_config)
+                except (ValueError, AssertionError) as e:
+                    raise ValueError(
+                        f"[Agent {agent_id} in WG {wg_id}] Configuration validation failed: {str(e)}"
+                    ) from e
+
+    def _validate_config(self, config):
+        # config = self.config
         # number of GPUs total
         n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
 
@@ -845,8 +865,8 @@ class RayPPOTrainer:
 
         for data_source, tool_calls in data_source_tool_calling.items():
             metric_dict[f'val/{data_source}/tool_call_count/mean'] = np.mean(tool_calls)
-            metric_dict[f'val/{data_source}/tool_call_count/max'] = np.max(tool_calls)
-            metric_dict[f'val/{data_source}/tool_call_count/min'] = np.min(tool_calls)
+            # metric_dict[f'val/{data_source}/tool_call_count/max'] = np.max(tool_calls)
+            # metric_dict[f'val/{data_source}/tool_call_count/min'] = np.min(tool_calls)
 
         for k, v in success_rate.items():
             metric_dict[f'val/{k}'] = v
@@ -1170,7 +1190,13 @@ class RayPPOTrainer:
 
                     for wg_id in multiagent_batch.keys():
                         sub_batch = multiagent_batch[wg_id]
-                        sub_batch = adjust_batch(self.config, sub_batch, wg_id=wg_id)
+                        
+                        # Create agent-specific config for adjust_batch
+                        agent_config = OmegaConf.create(OmegaConf.to_container(self.config, resolve=True))
+                        # Replace actor_rollout_ref with agent-specific config
+                        agent_config.actor_rollout_ref = self.wg_to_agents_mapping[wg_id][0]["config_actor_rollout_ref"]
+                        
+                        sub_batch = adjust_batch(agent_config, sub_batch, wg_id=wg_id)
                         multiagent_batch[wg_id] = sub_batch
                     
                         sub_batch.batch["response_mask"] = compute_response_mask(sub_batch)

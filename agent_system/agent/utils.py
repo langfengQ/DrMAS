@@ -16,7 +16,7 @@ def omega_equal_resolved(cfg1, cfg2) -> bool:
     """Check deep equality between two OmegaConf configs after resolving interpolations."""
     return OmegaConf.to_container(cfg1, resolve=True) == OmegaConf.to_container(cfg2, resolve=True)
 
-def _set_specific_parameter(base_config, idx: int, total: int, agent_specific_parameters: List[str] = None):
+def _set_specific_parameter(base_config, idx: int, total: int, agent_specific_parameters=None):
     """
     Update agent-specific parameters in the base configuration for a given agent index.
 
@@ -24,36 +24,58 @@ def _set_specific_parameter(base_config, idx: int, total: int, agent_specific_pa
         base_config: An OmegaConf.DictConfig or a regular dict.
         idx (int): The index of the current agent (0-based).
         total (int): Total number of agents.
-        agent_specific_parameters (List[str], optional):
-            A list of parameter paths that vary by agent, e.g.
-            ["actor.optim.lr", "actor.ppo_micro_batch_size_per_gpu"].
+        agent_specific_parameters: A dict mapping parameter paths to lists of values
 
     Returns:
         A new configuration (DictConfig) customized for the current agent.
     """
 
+    def _extract_and_validate_lists(nested_dict, prefix="", total=total):
+        """
+        Recursively extract all list values from nested dict structure.
+        Returns a flat dict mapping full paths to lists.
+        """
+        result = {}
+        for key, value in nested_dict.items():
+            current_path = f"{prefix}.{key}" if prefix else key
+            
+            if isinstance(value, (list, ListConfig)):
+                # Found a list - validate and store
+                if len(value) != total:
+                    raise ValueError(
+                        f"Agent-Specific Parameter '{current_path}' list length mismatch: "
+                        f"expected {total} (number of agents), got {len(value)}. Value: {value}"
+                    )
+                result[current_path] = value
+            elif isinstance(value, (dict, DictConfig)):
+                # Recursively process nested dict
+                result.update(_extract_and_validate_lists(value, current_path, total))
+            else:
+                raise ValueError(
+                    f"Agent-Specific Parameter '{current_path}' must have a list or dict value, "
+                    f"but got {type(value).__name__}. Value: {value}"
+                )
+        return result
+    
     # Deep-copy the base config to avoid mutating the original
     cfg = OmegaConf.create(OmegaConf.to_container(base_config, resolve=True))
     if agent_specific_parameters is None:
         return cfg
 
-    for param_path in agent_specific_parameters:
-        value = OmegaConf.select(base_config, param_path)
-        if value is None:
-            raise ValueError(f"Parameter path '{param_path}' not found in base_config.")
-        if not isinstance(value, ListConfig):
-            raise ValueError(
-                f"Agent-Specific Parameter '{param_path}' must be a list or ListConfig, but got {type(value).__name__}."
-            )
-        if len(value) != total:
-            raise ValueError(
-                f"Agent-Specific Parameter '{param_path}' list length mismatch: expected {total}, got {len(value)}. Full value: {value}"
-            )
+    if isinstance(agent_specific_parameters, (dict, DictConfig)):
+        # Convert nested dict structure to flat path->list mapping
+        flat_params = _extract_and_validate_lists(agent_specific_parameters, total=total)
         
-        specific_value = value[idx]
-        OmegaConf.update(cfg, param_path, specific_value, merge=False)
-    return cfg
+        # Update config with selected values for this agent
+        for param_path, values in flat_params.items():
+            specific_value = values[idx]
+            OmegaConf.update(cfg, param_path, specific_value, merge=False)
+        return cfg
 
+    raise TypeError(
+        f"agent_specific_parameters must be a dict or None, "
+        f"but got {type(agent_specific_parameters).__name__}"
+    )
 
 def build_wg_ids(config):
     agent_ids = config.agent.agent_ids
