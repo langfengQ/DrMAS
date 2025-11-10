@@ -268,33 +268,21 @@ def process_image(image, max_pixels: int = 2048 * 2048, min_pixels: int = 256 * 
     return image
 
 
-def flatten_lcm(values):
-    if isinstance(values, ListConfig):
-        values = list(values)
-        arr = np.array(values, dtype=int)
-    elif isinstance(values, (list, tuple, np.ndarray)):
-        arr = np.array(values, dtype=int)
-    elif isinstance(values, int):
-        arr = np.array([values], dtype=int)
-    else:
-        raise ValueError(f"Unsupported type: {type(values)}")
-    return int(np.lcm.reduce(arr))
-
 def adjust_batch(config, data: DataProto, wg_id: str, mode="copy") -> DataProto:
     use_adaptive_bs = config.actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size
     ppo_mini_update_num = config.actor_rollout_ref.actor.ppo_mini_update_num
 
     world_size = config.trainer.n_gpus_per_node * config.trainer.nnodes
 
-    size_divisor_rollout = flatten_lcm(config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu) * world_size
+    size_divisor_rollout = config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu * world_size
     if config.algorithm.use_kl_in_reward or config.actor_rollout_ref.actor.use_kl_loss:
-        size_divisor_ref = flatten_lcm(config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu) * world_size
+        size_divisor_ref = config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu * world_size
     else:
         size_divisor_ref = size_divisor_rollout
     if "multi_modal_inputs" in data.non_tensor_batch:
-        size_divisor_actor = flatten_lcm(config.actor_rollout_ref.actor.ppo_mini_batch_size) * world_size
+        size_divisor_actor = config.actor_rollout_ref.actor.ppo_mini_batch_size * world_size
     else:
-        size_divisor_actor = flatten_lcm(config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu) * world_size
+        size_divisor_actor = config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu * world_size
 
     size_divisor = np.lcm.reduce(np.array([size_divisor_ref, size_divisor_rollout, size_divisor_actor])).item()
 

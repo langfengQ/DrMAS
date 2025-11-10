@@ -198,10 +198,10 @@ def compute_data_metrics(batch: DataProto, unique_wg_ids: List[str], use_critic:
             batch.non_tensor_batch["episode_lengths"][unique_idx].min().item(),
         "episode/tool_call_count/mean": 
             batch.non_tensor_batch["tool_callings"][unique_idx].mean().item(),
-        "episode/tool_call_count/max":
-            batch.non_tensor_batch["tool_callings"][unique_idx].max().item(),
-        "episode/tool_call_count/min":
-            batch.non_tensor_batch["tool_callings"][unique_idx].min().item(),
+        # "episode/tool_call_count/max":
+        #     batch.non_tensor_batch["tool_callings"][unique_idx].max().item(),
+        # "episode/tool_call_count/min":
+        #     batch.non_tensor_batch["tool_callings"][unique_idx].min().item(),
         **({f"episode/{k}": v[0].item() for k, v in batch.non_tensor_batch.items() if "success_rate" in k}),
     })
     return metrics

@@ -8,25 +8,26 @@ group_by_agent_id=True
 ##################### Agent Configurations #####################
 agent_ids='["Verifier Agent","Search Agent","Answer Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
 model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
-model_sharing=False
+model_sharing=True
 
 orchestra_type=search
 
 # Agent-specific parameter override (only support actor_rollout_ref)
-agent_specific_parameters='["actor.optim.lr","actor.ppo_micro_batch_size_per_gpu"]'
 actor_optim_lr='[1e-6,1e-6,1e-6]'
 actor_ppo_micro_batch_size_per_gpu='[4,8,8]'
 
 ##################### Training Configurations #################
 
-train_data_size=256
+train_data_size=128
 val_data_size=512
 group_size=5
 max_turn=4
-ppo_mini_update_num=10
+ppo_mini_update_num=1
 
 max_prompt_length=4096
-max_response_length=1024
+max_response_length=800
+
+lr_warmup_steps=-1
 
 ####################### Other Configurations #####################
 
@@ -35,7 +36,7 @@ agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:
 
 combined_tag="${agent_name_tag}_${model_name_tag}"
 
-experiment_name="${combined_tag}_share${model_sharing}_warmup80_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res"
+experiment_name="${combined_tag}_share${model_sharing}_warmup${lr_warmup_steps}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res_bs${train_data_size}_invalid0.1"
 
 default_local_dir="/mnt/raid/data/langf/checkpoints/multiagent_search/${experiment_name}"
 
@@ -54,16 +55,18 @@ python3 -m verl.trainer.main_ppo \
     data.truncation='left' \
     data.return_raw_chat=True \
     actor_rollout_ref.model.path=null \
-    actor_rollout_ref.actor.optim.lr=$actor_optim_lr \
-    actor_rollout_ref.actor.optim.lr_warmup_steps=80 \
+    actor_rollout_ref.actor.optim.lr=null \
+    +agent.agent_specific_parameters.actor.optim.lr=$actor_optim_lr \
+    actor_rollout_ref.actor.optim.lr_warmup_steps=$lr_warmup_steps \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=$ppo_mini_update_num \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$actor_ppo_micro_batch_size_per_gpu \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=null \
+    +agent.agent_specific_parameters.actor.ppo_micro_batch_size_per_gpu=$actor_ppo_micro_batch_size_per_gpu \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
@@ -72,8 +75,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
-    actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
-    algorithm.gamma=0.95 \
+    actor_rollout_ref.actor.invalid_action_penalty_coef=0.1 \
     algorithm.group_by_agent_id=$group_by_agent_id \
     env.env_name=search \
     env.seed=0 \
@@ -84,7 +86,6 @@ python3 -m verl.trainer.main_ppo \
     agent.agent_ids="$agent_ids" \
     agent.model_ids="$model_ids" \
     agent.model_sharing=$model_sharing \
-    agent.agent_specific_parameters=$agent_specific_parameters \
     agent.orchestra_type=$orchestra_type \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
@@ -94,6 +95,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
-    trainer.test_freq=20 \
+    trainer.test_freq=10 \
     trainer.total_epochs=1 \
     trainer.val_before_train=True $@
