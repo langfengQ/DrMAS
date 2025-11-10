@@ -1,5 +1,5 @@
 set -x
-export CUDA_VISIBLE_DEVICES=4,5
+export CUDA_VISIBLE_DEVICES=2,3
 ###################### Algorithm Configurations #################
 
 algorithm=grpo
@@ -8,13 +8,12 @@ group_by_agent_id=True
 ##################### Agent Configurations #####################
 agent_ids='["Solver Agent","Verifier Agent"]'
 model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
-model_sharing=False
+model_sharing=True
 
 orchestra_type=math
 max_loop_num=2
 
 # Agent-specific parameter override (only support actor_rollout_ref)
-agent_specific_parameters='["actor.optim.lr","actor.ppo_micro_batch_size_per_gpu"]'
 actor_optim_lr='[1e-6,1e-6]'
 actor_ppo_micro_batch_size_per_gpu='[2,2]'
 
@@ -49,18 +48,21 @@ python3 -m verl.trainer.main_ppo \
     data.max_response_length=$max_response_length \
     data.filter_overlong_prompts=True \
     +data.apply_chat_template_kwargs.enable_thinking=False \
-    data.truncation='right' \
+    data.truncation='middle' \
     data.return_raw_chat=True \
     actor_rollout_ref.model.path=null \
-    actor_rollout_ref.actor.optim.lr=$actor_optim_lr \
+    actor_rollout_ref.actor.optim.lr=null \
+    +agent.agent_specific_parameters.actor.optim.lr=$actor_optim_lr \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=$ppo_mini_update_num \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=$actor_ppo_micro_batch_size_per_gpu \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=null \
+    +agent.agent_specific_parameters.actor.ppo_micro_batch_size_per_gpu=$actor_ppo_micro_batch_size_per_gpu \
     actor_rollout_ref.actor.use_kl_loss=False \
+    actor_rollout_ref.actor.entropy_coeff=0.0 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
@@ -69,7 +71,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
-    actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
+    actor_rollout_ref.actor.invalid_action_penalty_coef=0.1 \
     algorithm.group_by_agent_id=$group_by_agent_id \
     env.env_name=math \
     env.seed=0 \
@@ -77,7 +79,6 @@ python3 -m verl.trainer.main_ppo \
     agent.agent_ids="$agent_ids" \
     agent.model_ids="$model_ids" \
     agent.model_sharing=$model_sharing \
-    agent.agent_specific_parameters=$agent_specific_parameters \
     agent.orchestra_type=$orchestra_type \
     agent.orchestra.math.max_loop_num=$max_loop_num \
     trainer.critic_warmup=0 \
@@ -86,7 +87,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name="$experiment_name" \
     trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
-    trainer.save_freq=50 \
-    trainer.test_freq=50 \
+    trainer.save_freq=20 \
+    trainer.test_freq=20 \
     trainer.total_epochs=10 \
     trainer.val_before_train=True $@
