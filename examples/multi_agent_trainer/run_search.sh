@@ -8,7 +8,7 @@ group_by_agent_id=True
 ##################### Agent Configurations #####################
 agent_ids='["Verifier Agent","Search Agent","Answer Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
 model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
-model_sharing=True
+model_sharing=False
 
 orchestra_type=search
 
@@ -22,7 +22,7 @@ train_data_size=128
 val_data_size=512
 group_size=5
 max_turn=4
-ppo_mini_update_num=1
+ppo_mini_update_num=5
 
 max_prompt_length=4096
 max_response_length=800
@@ -36,7 +36,7 @@ agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:
 
 combined_tag="${agent_name_tag}_${model_name_tag}"
 
-experiment_name="${combined_tag}_share${model_sharing}_warmup${lr_warmup_steps}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res_bs${train_data_size}_invalid0.1"
+experiment_name="${combined_tag}_share${model_sharing}_warmup${lr_warmup_steps}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res_bs${train_data_size}"
 
 default_local_dir="/mnt/raid/data/langf/checkpoints/multiagent_search/${experiment_name}"
 
@@ -75,7 +75,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
-    actor_rollout_ref.actor.invalid_action_penalty_coef=0.1 \
+    actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     algorithm.group_by_agent_id=$group_by_agent_id \
     env.env_name=search \
     env.seed=0 \
