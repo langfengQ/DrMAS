@@ -202,7 +202,7 @@ def compute_data_metrics(batch: DataProto, unique_wg_ids: List[str], use_critic:
         #     batch.non_tensor_batch["tool_callings"][unique_idx].max().item(),
         # "episode/tool_call_count/min":
         #     batch.non_tensor_batch["tool_callings"][unique_idx].min().item(),
-        **({f"episode/{k}": v[0].item() for k, v in batch.non_tensor_batch.items() if "success_rate" in k}),
+        **({f"episode/{k.replace('success_rate', 'pass@1')}": v[0].item() for k, v in batch.non_tensor_batch.items() if "success_rate" in k}), # replace success_rate to pass@1
     })
     return metrics
 

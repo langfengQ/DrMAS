@@ -869,7 +869,7 @@ class RayPPOTrainer:
             # metric_dict[f'val/{data_source}/tool_call_count/min'] = np.min(tool_calls)
 
         for k, v in success_rate.items():
-            metric_dict[f'val/{k}'] = v
+            metric_dict[f'val/{k.replace("success_rate", "pass@1")}'] = v
 
         return metric_dict
 

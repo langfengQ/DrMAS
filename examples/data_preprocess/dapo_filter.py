@@ -24,7 +24,9 @@ if __name__ == "__main__":
     test_dataset_aime24 = datasets.load_dataset("HuggingFaceH4/aime_2024", split="train")
     test_dataset_aime25 = datasets.load_dataset("MathArena/aime_2025", split="train")
     test_dataset_math500 = datasets.load_dataset("HuggingFaceH4/MATH-500", split="test")
-    test_dataset_math500 = test_dataset_math500.select(range(50))
+    test_dataset_math500_first50 = test_dataset_math500.select(range(50))
+
+    test_dataset_amc23 = datasets.load_dataset("knoveleng/AMC-23", split="train")
     # instruction_following = (
     #     r"You FIRST think about the reasoning process as an internal monologue and then provide the final answer. "
     #     r"The reasoning process MUST BE enclosed within <think> </think> tags. "
@@ -104,15 +106,21 @@ if __name__ == "__main__":
     test_dataset_aime24 = test_dataset_aime24.map(function=make_map_fn_test("test", "aime24"), with_indices=True)
     test_dataset_aime25 = test_dataset_aime25.map(function=make_map_fn_test("test", "aime25"), with_indices=True)
     test_dataset_math500 = test_dataset_math500.map(function=make_map_fn_test("test", "math500"), with_indices=True)
+    test_dataset_math500_first50 = test_dataset_math500_first50.map(function=make_map_fn_test("test", "math500_first50"), with_indices=True)
+    test_dataset_amc23 = test_dataset_amc23.map(function=make_map_fn_test("test", "amc23"), with_indices=True)
 
     local_dir = args.local_dir
     hdfs_dir = args.hdfs_dir
 
-    test_dataset = concatenate_datasets([test_dataset_aime24, test_dataset_aime25, test_dataset_math500])
+    test_dataset = concatenate_datasets([test_dataset_aime24, test_dataset_aime25, test_dataset_math500_first50])
     print(f"Combined test_dataset length: {len(test_dataset)}")
+
+    test_dataset_full = concatenate_datasets([test_dataset_aime24, test_dataset_aime25, test_dataset_math500, test_dataset_amc23])
+    print(f"Combined test_dataset_full length: {len(test_dataset_full)}")
 
     train_dataset.to_parquet(os.path.join(local_dir, "train.parquet"))
     test_dataset.to_parquet(os.path.join(local_dir, "test.parquet"))
+    test_dataset_full.to_parquet(os.path.join(local_dir, "test_full.parquet"))
 
     if hdfs_dir is not None:
         makedirs(hdfs_dir)
