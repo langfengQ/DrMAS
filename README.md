@@ -1,8 +1,8 @@
 # Installation
 ## Install veRL
 ```bash
-conda create -n multiagent python==3.12 -y
-conda activate multiagent
+conda create -n DrMAS python==3.12 -y
+conda activate DrMAS
 
 pip3 install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 pip3 install flash-attn==2.7.4.post1 --no-build-isolation
@@ -15,7 +15,7 @@ pip3 install -r requirements_sglang.txt
 ## Install Supported Environments
 ### 1. Search
 ```bash
-conda activate multiagent
+conda activate DrMAS
 cd ./agent_system/environments/env_package/search/third_party
 pip install -e .
 pip install gym==0.26.2
@@ -74,7 +74,7 @@ bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log
 ```
 
 ### 2. Math
-Prepare the dataset (test data contains 50 examples from MATH500, 30 examples from AIME2024, and 30 examples from AIME2025):
+Prepare the dataset (test.parquet contains 50 examples from MATH500, 30 examples from AIME2024, and 30 examples from AIME2025):
 ```bash
 cd repo_root/
 python examples/data_preprocess/dapo_filter.py
