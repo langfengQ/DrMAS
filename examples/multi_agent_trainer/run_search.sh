@@ -1,13 +1,12 @@
 set -x
-export CUDA_VISIBLE_DEVICES=2,3
 ###################### Algorithm Configurations #################
 
 algorithm=grpo
 group_by_agent_id=True
 
 ##################### Agent Configurations #####################
-agent_ids='["Verifier Agent","Search Agent","Answer Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
-model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
+agent_ids='["Verifier Agent","Search Agent","Answer Agent"]'
+model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct"]'
 model_sharing=False
 
 orchestra_type=search
@@ -36,8 +35,6 @@ combined_tag="${agent_name_tag}_${model_name_tag}"
 
 experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res_bs${train_data_size}"
 
-default_local_dir="/mnt/raid/data/langf/checkpoints/DrMAS_search/${experiment_name}"
-
 TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
 VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
 
@@ -55,7 +52,6 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.path=null \
     actor_rollout_ref.actor.optim.lr=null \
     +agent.agent_specific_parameters.actor.optim.lr=$actor_optim_lr \
-    actor_rollout_ref.actor.optim.lr_warmup_steps=$lr_warmup_steps \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=$ppo_mini_update_num \
@@ -89,7 +85,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_search' \
     trainer.experiment_name="$experiment_name" \
-    trainer.default_local_dir="$default_local_dir" \
     trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.save_freq=10 \

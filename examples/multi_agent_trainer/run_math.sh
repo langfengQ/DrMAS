@@ -1,5 +1,4 @@
 set -x
-export CUDA_VISIBLE_DEVICES=4,5
 ###################### Algorithm Configurations #################
 
 algorithm=grpo
@@ -7,7 +6,7 @@ group_by_agent_id=True
 
 ##################### Agent Configurations #####################
 agent_ids='["Solver Agent","Verifier Agent"]'
-model_ids='["Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B"]'
+model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
 model_sharing=True
 
 orchestra_type=math
@@ -85,7 +84,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_math' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=2 \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
     trainer.test_freq=10 \
