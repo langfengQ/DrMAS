@@ -27,12 +27,12 @@ Unlike single-agent approaches, `Dr.MAS` supports sophisticated multi-agent setu
 | - | - |
 | **Flexible Agent Registry** | ✅ Decorator-based agent registration (`@AgentRegistry.register`)<br>✅ Clear role specialization per agent<br>✅ Easy agent composition and management |
 | **Multi-Agent Orchestration** | ✅ User-defined orchestration via `BaseOrchestra`<br>✅ Sequential, hierarchical, and conditional execution<br>✅ Built-in Search Orchestra (Verifier → Search/Answer)<br>✅ Built-in Math Orchestra (Solver ↔ Verifier loop) |
-| **Agent-Model Assignment** | ✅ Flexible model-sharing or dedicated-model setups<br>✅Heterogeneous LLMs per agent (different model families/sizes/checkpoints)<br>✅ Automatic logical mapping of agents to LLM worker groups|
+| **Agent-Model Assignment** | ✅ Flexible model-sharing or dedicated-model setups<br>✅ Heterogeneous LLMs per agent (different model families/sizes/checkpoints)<br>✅ Automatic logical mapping of agents to LLM worker groups|
 | **Per-Agent Configuration** | ✅ Agent-specific actor hyperparameter<br>✅ Per-agent training overrides for fine-grained control |
 | **Shared Resource Pooling** | ✅ Shared GPU pool across multiple LLM worker groups for efficient hardware utilization <br>✅ SGLang for high-throughput, low-latency inference|
-| **RL Algorithms**        | ✅ GRPO<br>✅ PPO |
 | **Environments**         | ✅ Search<br>✅ Math |
 | **Model Support**        | ✅ Qwen2.5<br>✅ Qwen3<br>✅ LLaMA<br>and more |
+| **RL Algorithms**        | ✅ GRPO<br>✅ GiGPO<br>✅ DAPO <br>✅ RLOO <br>and more |
 
 # Table of Contents
 
@@ -197,7 +197,7 @@ bash examples/multi_agent_trainer/run_math.sh
 
 To register a new agent:
 
-1. **Create Agent Class**: Inherit from `BaseAgent` and implement the `call` method:
+1. **Create Agent Class**: Inherit from [BaseAgent](./agent_system/agent/agents/base.py#L13) and implement the `call` method:
 
 ```python
 MY_AGENT_PROMPT = """
@@ -241,7 +241,7 @@ agent:
 
 To create a custom orchestra:
 
-1. **Create Orchestra Class**: Inherit from `BaseOrchestra`:
+1. **Create New Orchestra Class**: Inherit from [BaseOrchestra](./agent_system/agent/orchestra/base.py#L53):
 
 ```python
 class MyOrchestra(BaseOrchestra):
@@ -264,7 +264,7 @@ class MyOrchestra(BaseOrchestra):
 
 ```
 
-2. **Register Orchestra**: Add it to the rollout loop:
+2. **Register Orchestra**: Add it to the rollout loop [here](./agent_system/multi_turn_rollout/rollout_loop.py#L365):
 
 ```python
 # In agent_system/multi_turn_rollout/rollout_loop.py
@@ -274,7 +274,7 @@ if orchestra_type == "my_orchestra":
 
 ## Agent Configuration
 
-Multi-agent training is configured through YAML files or command-line arguments. Key configuration sections:
+Key configuration sections:
 ```yaml
 agent:
   multi_agent: True  # Enable multi-agent mode
