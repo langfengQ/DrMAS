@@ -1182,11 +1182,7 @@ class RayPPOTrainer:
                     # multiagent_batch (Dict[str, DataProto]): Dictionary mapping unique_wg_ids to their respective DataProto batches
                     unique_wg_ids = list(self.wg_to_agents_mapping.keys())
 
-                    if self.config.agent.train_start_step is not None:
-                        update_agent_ids = [agent_i for (agent_i, train_start_step_i) in zip(self.config.agent.agent_ids, self.config.agent.train_start_step) if train_start_step_i <= self.global_steps]
-                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids, update_agent_ids=update_agent_ids)
-                    else:
-                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids)
+                    multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids)
 
                     for wg_id in multiagent_batch.keys():
                         sub_batch = multiagent_batch[wg_id]
