@@ -21,6 +21,10 @@
 
 Unlike single-agent approaches, `Dr.MAS` supports sophisticated multi-agent setups where specialized LLM-based agents collaborate to tackle complex reasoning and decision-making tasks. The framework features **flexible agent registry**, **customizable multi-agent orchestration**, **model sharing/non-sharing (e.g., heterogeneous LLMs)**, **per-agent configuration**, and **shared resource pooling**, making it well suited for training multi-agent LLM systems with RL.
 
+<p align="center">
+    <img src="./docs/drmas/drmas_framework.png" alt="framework" width="100%">
+</p>
+
 # Quick Feature Summary
 
 | Feature Category | Supported Capabilities|
@@ -30,7 +34,7 @@ Unlike single-agent approaches, `Dr.MAS` supports sophisticated multi-agent setu
 | **Agent-Model Assignment** | ✅ Flexible model-sharing or dedicated-model setups<br>✅ Heterogeneous LLMs per agent (different model families/sizes/checkpoints)<br>✅ Automatic logical mapping of agents to LLM worker groups|
 | **Per-Agent Configuration** | ✅ Agent-specific actor hyperparameter<br>✅ Per-agent training overrides for fine-grained control |
 | **Shared Resource Pooling** | ✅ Shared GPU pool across multiple LLM worker groups for efficient hardware utilization <br>✅ SGLang for high-throughput, low-latency inference|
-| **Environments**         | ✅ Search<br>✅ Math |
+| **Environments**         | ✅ Math<br>✅ Search |
 | **Model Support**        | ✅ Qwen2.5<br>✅ Qwen3<br>✅ LLaMA<br>and more |
 | **RL Algorithms**        | ✅ GRPO<br>✅ GiGPO<br>✅ DAPO <br>✅ RLOO <br>and more |
 
@@ -41,8 +45,8 @@ Unlike single-agent approaches, `Dr.MAS` supports sophisticated multi-agent setu
   - [Install veRL](#install-verl)
   - [Install Supported Environments](#install-supported-environments)
 - [Run Examples](#run-examples)
-  - [Search](#search)
   - [Math](#math)
+  - [Search](#search)
 - [Usage Guide](#usage-guide)
   - [How to register Custom Agents](#how-to-register-custom-agents)
   - [How to Create Custom Orchestras](#how-to-create-custom-orchestras)
@@ -69,7 +73,7 @@ Unlike single-agent approaches, `Dr.MAS` supports sophisticated multi-agent setu
 
 ## 3. Agent-Model Assignment
 
-A core assignment logic maps logical agents $(1, ..., K)$ to physical LLM worker groups, enabling flexible model sharing strategies:
+A core assignment logic maps logical agents $(1, ..., K)$ to physical LLM worker groups, enabling flexible model sharing strategies (see [here](./verl/trainer/config/ppo_trainer.yaml#L296)):
 - **Non-sharing**: Each agent uses its own LLM, supporting heterogeneous model families, sizes, and checkpoints
 - **Sharing**: Agents with the same model share one LLM worker group
 
@@ -104,7 +108,16 @@ pip3 install -r requirements_sglang.txt
 ```
 
 ## Install Supported Environments
-### 1. Search
+
+### 1. Math
+Prepare the dataset (test.parquet contains 50 examples from MATH500, 30 examples from AIME2024, and 30 examples from AIME2025):
+```bash
+cd repo_root/
+python examples/data_preprocess/dapo_filter.py
+```
+
+
+### 2. Search
 ```bash
 conda activate DrMAS
 cd ./agent_system/environments/env_package/search/third_party
@@ -164,23 +177,7 @@ conda activate retriever
 bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log 
 ```
 
-
-### 2. Math
-Prepare the dataset (test.parquet contains 50 examples from MATH500, 30 examples from AIME2024, and 30 examples from AIME2025):
-```bash
-cd repo_root/
-python examples/data_preprocess/dapo_filter.py
-```
-
 # Run Examples
-
-## Search
-
-Train a 3-agent system (Verifier, Search, Answer) for information retrieval tasks:
-
-```bash
-bash examples/multi_agent_trainer/run_search.sh
-```
 
 ## Math
 
@@ -190,6 +187,13 @@ Train a 2-agent system (Solver, Verifier) for mathematical problem solving:
 bash examples/multi_agent_trainer/run_math.sh
 ```
 
+## Search
+
+Train a 3-agent system (Verifier, Search, Answer) for information retrieval tasks:
+
+```bash
+bash examples/multi_agent_trainer/run_search.sh
+```
 
 # Usage Guide
 
@@ -277,7 +281,7 @@ if orchestra_type == "my_orchestra":
 Key configuration sections:
 ```yaml
 agent:
-  multi_agent: True  # Enable multi-agent mode
+  multi_agent: True
   agent_ids: ["Agent 1", "Agent 2", "Agent 3"]
   model_ids: ["model/path/1", "model/path/2", "model/path/3"]
   model_sharing: False  # Whether to share models across agents
@@ -286,13 +290,13 @@ agent:
   # Agent-specific parameter overrides
   # The list order corresponds to the order of agent_ids
   agent_specific_parameters:
-    actor.optim.lr: [1e-6,1e-6,1e-6]
+    actor.optim.lr: [1e-6,1e-6,1e-7]
     actor.ppo_micro_batch_size_per_gpu: [4,8,8]
 ```
 
 # Acknowledgement
 
-This codebase is built upon [verl-agent](https://github.com/langfengQ/verl-agent) and [verl](https://github.com/volcengine/verl). The Search environment is adapted from [Search-R1](https://github.com/PeterGriffinJin/Search-R1) and [SkyRL-Gym](https://github.com/NovaSky-AI/SkyRL/tree/main/skyrl-gym). The Math environment is adapted from [DeepScaler](https://github.com/rllm-org/rllm) and [DAPO](https://github.com/volcengine/verl/tree/main/recipe/dapo).
+This codebase is built upon [verl-agent](https://github.com/langfengQ/verl-agent) and [verl](https://github.com/volcengine/verl). The Search environment is adapted from [Search-R1](https://github.com/PeterGriffinJin/Search-R1) and [SkyRL-Gym](https://github.com/NovaSky-AI/SkyRL/tree/main/skyrl-gym). The Math environment is adapted from [DeepScaleR](https://github.com/rllm-org/rllm) and [DAPO](https://github.com/volcengine/verl/tree/main/recipe/dapo).
 
 We extend our gratitude to the authors and contributors of these projects for their valuable work.
 
