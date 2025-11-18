@@ -1,6 +1,23 @@
 set -x
-###################### Algorithm Configurations #################
 
+MODE=${1:-train}
+if [ "$MODE" == "eval" ] || [ "$MODE" == "evaluation" ]; then
+    echo "Running in evaluation mode"
+    VAL_ONLY=True
+    TRAIN_DATA="$HOME/data/drmas_math/train.parquet"
+    VAL_DATA="$HOME/data/drmas_math/test.parquet" # Full test dataset
+    train_data_size=32
+    val_data_size=512
+else
+    echo "Running in training mode"
+    VAL_ONLY=False
+    TRAIN_DATA="$HOME/data/drmas_math/train.parquet"
+    VAL_DATA="$HOME/data/drmas_math/test_sampled.parquet" # For fast validation during training (test_sampled.parquet contains 50 examples from MATH500, 30 examples from AIME2024, and 30 examples from AIME2025)
+    train_data_size=32
+    val_data_size=110
+fi
+
+###################### Algorithm Configurations #################
 algorithm=grpo
 group_by_agent_id=True
 
@@ -17,9 +34,6 @@ actor_optim_lr='[1e-6,1e-6]'
 actor_ppo_micro_batch_size_per_gpu='[2,2]'
 
 ##################### Training Configurations #################
-
-train_data_size=32
-val_data_size=110
 group_size=8
 ppo_mini_update_num=1
 
@@ -35,8 +49,6 @@ combined_tag="${agent_name_tag}_${model_name_tag}"
 
 experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_loop_num}loop_${max_prompt_length}prompt_${max_response_length}res"
 
-TRAIN_DATA="/home/langfeng/data/dapo_filter/train.parquet"
-VAL_DATA="/home/langfeng/data/dapo_filter/test.parquet"
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
     data.train_files=$TRAIN_DATA \
@@ -84,9 +96,10 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_math' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
     trainer.test_freq=10 \
     trainer.total_epochs=2 \
-    trainer.val_before_train=True $@
+    trainer.val_only=$VAL_ONLY \
+    trainer.val_before_train=True

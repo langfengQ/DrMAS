@@ -110,10 +110,10 @@ pip3 install -r requirements_sglang.txt
 ## Install Supported Environments
 
 ### 1. Math
-Prepare the dataset (test.parquet contains 50 examples from MATH500, 30 examples from AIME2024, and 30 examples from AIME2025):
+Prepare the dataset:
 ```bash
 cd repo_root/
-python examples/data_preprocess/dapo_filter.py
+python examples/data_preprocess/drmas_math.py
 ```
 
 
@@ -126,15 +126,9 @@ pip install gym==0.26.2
 ```
 
 Prepare dataset (data will be saved at `~/data/searchR1_processed_direct`):
-For fast validation during the training, sample 30 entries from each data source (total 210 samples):
 ```bash
 cd repo_root/
-
-# For fast validation during training (sample 30 entries per data source, total 210 samples):
-python examples/data_preprocess/preprocess_search_r1_dataset.py --samples_per_source 30
-
-# Or, to process the full test dataset:
-# python examples/data_preprocess/preprocess_search_r1_dataset.py
+python examples/data_preprocess/drmas_search.py
 ```
 
 
@@ -182,17 +176,26 @@ bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log
 ## Math
 
 Train a 2-agent system (Solver, Verifier) for mathematical problem solving:
-
 ```bash
 bash examples/multi_agent_trainer/run_math.sh
 ```
 
+After training completes, evaluate the multi-agent system on the full test dataset:
+```bash
+bash examples/multi_agent_trainer/run_math.sh eval
+```
+
 ## Search
 
-Train a 3-agent system (Verifier, Search, Answer) for information retrieval tasks:
+Train a 3-agent system (Verifier, Search, Answer) for search tasks:
 
 ```bash
 bash examples/multi_agent_trainer/run_search.sh
+```
+
+After training completes, evaluate the multi-agent system on the full test dataset:
+```bash
+bash examples/multi_agent_trainer/run_search.sh eval
 ```
 
 # Usage Guide
