@@ -1,19 +1,36 @@
 set -x
-###################### Algorithm Configurations #################
 
+MODE=${1:-train}
+if [ "$MODE" == "eval" ] || [ "$MODE" == "evaluation" ]; then
+    echo "Running in evaluation mode"
+    VAL_ONLY=True
+    TRAIN_DATA="$HOME/data/drmas_search/train.parquet"
+    VAL_DATA="$HOME/data/drmas_search/test.parquet" # Full test dataset
+    train_data_size=128
+    val_data_size=512
+else
+    echo "Running in training mode"
+    VAL_ONLY=False
+    TRAIN_DATA="$HOME/data/drmas_search/train.parquet"
+    VAL_DATA="$HOME/data/drmas_search/test_sampled.parquet" # For fast validation during training (sample 30 entries per data source, total 210 samples)
+    train_data_size=128
+    val_data_size=512
+fi
+
+###################### Algorithm Configurations #################
 algorithm=grpo
 group_by_agent_id=True
 
 ##################### Agent Configurations #####################
-agent_ids='["Verifier Agent","Search Agent","Answer Agent"]'
-model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct"]'
-model_sharing=False
+agent_ids='["Verifier Agent","Search Agent","Answer Agent"]' # "Reflexion Agent" / "Search Agent" / "Critic Agent"
+model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-3B-Instruct"]' # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B-Instruct-2507" / "Qwen/Qwen2.5-1.5B-Instruct"
+model_sharing=True
 
 orchestra_type=search
 
 # Agent-specific parameter override (only support actor_rollout_ref)
 actor_optim_lr='[1e-6,1e-6,1e-6]'
-actor_ppo_micro_batch_size_per_gpu='[4,8,8]'
+actor_ppo_micro_batch_size_per_gpu='[4,4,4]'
 
 ##################### Training Configurations #################
 
@@ -21,7 +38,7 @@ train_data_size=128
 val_data_size=512
 group_size=5
 max_turn=4
-ppo_mini_update_num=10
+ppo_mini_update_num=5
 
 max_prompt_length=4096
 max_response_length=800
@@ -35,8 +52,7 @@ combined_tag="${agent_name_tag}_${model_name_tag}"
 
 experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res_bs${train_data_size}"
 
-TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
-VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
+default_local_dir="/mnt/raid/data/langf/checkpoints/DrMAS_search/${experiment_name}"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
@@ -60,7 +76,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
@@ -85,9 +101,11 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_search' \
     trainer.experiment_name="$experiment_name" \
+    trainer.default_local_dir="$default_local_dir" \
     trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
     trainer.total_epochs=1 \
+    trainer.val_only=$VAL_ONLY \
     trainer.val_before_train=True $@
