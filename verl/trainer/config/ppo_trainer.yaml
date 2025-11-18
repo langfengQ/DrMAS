@@ -293,7 +293,7 @@ ray_init:
 agent: # only for multi-agent training
   multi_agent: True # True for multi-agent training, False for single-agent training
   agent_ids: ["Solver Agent","Verifier Agent"]
-  model_ids: ["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]
+  model_ids: ["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]  # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B" / "Qwen/Qwen2.5-1.5B-Instruct"
   model_sharing: False  # False: each agent has a unique model, True: share the same model across agents
   agent_specific_parameters: null # Optional: define agent-specific parameter overrides (only support actor_rollout_ref)
   #  Dictionary format - parameter paths mapped to lists of values per agent

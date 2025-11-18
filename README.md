@@ -125,7 +125,7 @@ pip install -e .
 pip install gym==0.26.2
 ```
 
-Prepare dataset (data will be saved at `~/data/searchR1_processed_direct`):
+Prepare dataset:
 ```bash
 cd repo_root/
 python examples/data_preprocess/drmas_search.py
