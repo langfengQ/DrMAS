@@ -23,6 +23,7 @@ if __name__ == "__main__":
     test_dataset_math500_first50 = test_dataset_math500.select(range(50))
 
     test_dataset_amc23 = datasets.load_dataset("knoveleng/AMC-23", split="train")
+    test_dataset_minerva = datasets.load_dataset("zwhe99/simplerl-minerva-math", split="test")
     test_dataset_olympiadbench = datasets.load_dataset("realtreetune/olympiadbench", split="test")
     # instruction_following = (
     #     r"You FIRST think about the reasoning process as an internal monologue and then provide the final answer. "
@@ -105,6 +106,7 @@ if __name__ == "__main__":
     test_dataset_math500 = test_dataset_math500.map(function=make_map_fn_test("test", "math500"), with_indices=True)
     test_dataset_math500_first50 = test_dataset_math500_first50.map(function=make_map_fn_test("test", "math500_first50"), with_indices=True)
     test_dataset_amc23 = test_dataset_amc23.map(function=make_map_fn_test("test", "amc23"), with_indices=True)
+    test_dataset_minerva = test_dataset_minerva.map(function=make_map_fn_test("test", "minerva"), with_indices=True)
     test_dataset_olympiadbench = test_dataset_olympiadbench.map(function=make_map_fn_test("test", "olympiadbench"), with_indices=True)
 
     local_dir = args.local_dir
@@ -113,7 +115,7 @@ if __name__ == "__main__":
     test_dataset_sampled = concatenate_datasets([test_dataset_math500_first50, test_dataset_aime24, test_dataset_aime25])
     print(f"Combined test_dataset_sampled length: {len(test_dataset_sampled)}")
 
-    test_dataset_full = concatenate_datasets([test_dataset_math500,test_dataset_aime24, test_dataset_aime25, test_dataset_olympiadbench, test_dataset_amc23])
+    test_dataset_full = concatenate_datasets([test_dataset_math500,test_dataset_aime24, test_dataset_aime25, test_dataset_olympiadbench, test_dataset_amc23, test_dataset_minerva])
     print(f"Combined test_dataset_full length: {len(test_dataset_full)}")
 
     train_dataset.to_parquet(os.path.join(local_dir, "train.parquet"))
