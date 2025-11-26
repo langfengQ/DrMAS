@@ -111,52 +111,46 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         self.reset_buffer()
         text_actions, team_context, env_obs = self.initialize_context(env_obs)
         agent_active_mask = np.logical_and(np.ones(len(gen_batch), dtype=bool), active_masks).astype(bool)
-
-        if step < self.config.env.max_steps:
             
-            # Step 1: Run Verifier Agent (Router)
-            actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.VERIFIER_AGENT]]
+        # Step 1: Run Verifier Agent (Router)
+        actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.VERIFIER_AGENT]]
+        
+        batch, text_repsonses = self.agents[self.VERIFIER_AGENT].call(
+            gen_batch=gen_batch,
+            env_obs=env_obs,
+            team_context=team_context,
+            actor_rollout_wg=actor_rollout_wg,
+            agent_active_mask=agent_active_mask,
+            step=step,
+        )
+        
+        team_context = update_team_context(self.VERIFIER_AGENT, team_context, text_repsonses, agent_active_mask)
+        self.save_to_buffer(self.VERIFIER_AGENT, batch)
+        
+        # Get verification results (True = sufficient, False = need more info)
+        verification_vector = self.agents[self.VERIFIER_AGENT].get_verification_vector(text_repsonses, agent_active_mask)
+        search_active_mask = np.logical_and(agent_active_mask, np.logical_not(verification_vector)).astype(bool)
+        answer_active_mask = np.logical_and(agent_active_mask, verification_vector).astype(bool)
             
-            batch, text_repsonses = self.agents[self.VERIFIER_AGENT].call(
+        # Step 2: Conditionally run Search Agent (when verification says no)
+        if search_active_mask.any() and step < self.config.env.max_steps:
+            actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.SEARCH_AGENT]]
+            
+            batch, text_repsonses = self.agents[self.SEARCH_AGENT].call(
                 gen_batch=gen_batch,
                 env_obs=env_obs,
                 team_context=team_context,
                 actor_rollout_wg=actor_rollout_wg,
-                agent_active_mask=agent_active_mask,
+                agent_active_mask=search_active_mask,
                 step=step,
             )
             
-            team_context = update_team_context(self.VERIFIER_AGENT, team_context, text_repsonses, agent_active_mask)
-            self.save_to_buffer(self.VERIFIER_AGENT, batch)
+            team_context = update_team_context(self.SEARCH_AGENT, team_context, text_repsonses, search_active_mask)
+            self.save_to_buffer(self.SEARCH_AGENT, batch)
             
-            # Get verification results (True = sufficient, False = need more info)
-            verification_vector = self.agents[self.VERIFIER_AGENT].get_verification_vector(text_repsonses, agent_active_mask)
-            
-            # Step 2: Conditionally run Search Agent (when verification says no)
-            search_active_mask = np.logical_and(agent_active_mask, np.logical_not(verification_vector)).astype(bool)
-            
-            if search_active_mask.any():
-                actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.SEARCH_AGENT]]
-                
-                batch, text_repsonses = self.agents[self.SEARCH_AGENT].call(
-                    gen_batch=gen_batch,
-                    env_obs=env_obs,
-                    team_context=team_context,
-                    actor_rollout_wg=actor_rollout_wg,
-                    agent_active_mask=search_active_mask,
-                    step=step,
-                )
-                
-                team_context = update_team_context(self.SEARCH_AGENT, team_context, text_repsonses, search_active_mask)
-                self.save_to_buffer(self.SEARCH_AGENT, batch)
-                
-                # Update text_actions with Search Agent output for samples needing more info
-                text_actions = update_text_action(text_actions, text_repsonses, search_active_mask)
-            
-            answer_active_mask = np.logical_and(agent_active_mask, verification_vector).astype(bool)
-        else:
-            answer_active_mask = agent_active_mask.copy()
-
+            # Update text_actions with Search Agent output for samples needing more info
+            text_actions = update_text_action(text_actions, text_repsonses, search_active_mask)
+        
         # Step 3: Conditionally run Answer Agent (when verification says yes)
         if answer_active_mask.any():
             actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.ANSWER_AGENT]]
