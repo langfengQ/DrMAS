@@ -23,7 +23,7 @@ group_by_agent_id=True
 
 ##################### Agent Configurations #####################
 agent_ids='["Verifier Agent","Search Agent","Answer Agent"]'
-model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-3B-Instruct"]'
+model_ids='["Qwen/Qwen2.5-3B","Qwen/Qwen2.5-3B","Qwen/Qwen2.5-3B"]'
 model_sharing=True
 
 orchestra_type=search
@@ -46,13 +46,8 @@ max_response_length=800
 ####################### Other Configurations #####################
 
 model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
-agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
 
-combined_tag="${agent_name_tag}_${model_name_tag}"
-
-experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_turn}turn_${max_prompt_length}prompt_${max_response_length}res_bs${train_data_size}"
-
-default_local_dir="/mnt/raid/data/langf/checkpoints/DrMAS_search/${experiment_name}"
+experiment_name="drmas${group_by_agent_id}_share${model_sharing}_${model_name_tag}"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
@@ -76,11 +71,11 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
@@ -101,10 +96,9 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_search' \
     trainer.experiment_name="$experiment_name" \
-    trainer.default_local_dir="$default_local_dir" \
-    trainer.n_gpus_per_node=2 \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
-    trainer.save_freq=10 \
+    trainer.save_freq=50 \
     trainer.test_freq=10 \
     trainer.total_epochs=1 \
     trainer.val_only=$VAL_ONLY \
