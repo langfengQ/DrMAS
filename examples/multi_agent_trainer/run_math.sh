@@ -43,11 +43,8 @@ max_response_length=4096
 ####################### Other Configurations #####################
 
 model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
-agent_name_tag=$(jq -r '.[]' <<< "$agent_ids" | sed 's/ Agent//g' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
 
-combined_tag="${agent_name_tag}_${model_name_tag}"
-
-experiment_name="${combined_tag}_share${model_sharing}_updatenum${ppo_mini_update_num}_groupbyagent${group_by_agent_id}_${max_loop_num}loop_${max_prompt_length}prompt_${max_response_length}res"
+experiment_name="drmas${group_by_agent_id}_share${model_sharing}_${model_name_tag}"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
