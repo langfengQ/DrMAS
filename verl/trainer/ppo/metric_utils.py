@@ -76,7 +76,7 @@ def _compute_response_info(batch: DataProto) -> Dict[str, Any]:
     )
 
 
-def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str, Any]:
+def compute_data_metrics(batch: DataProto, unique_wg_ids: List[str], use_critic: bool = True) -> Dict[str, Any]:
     """
     Computes various metrics from a batch of data for PPO training.
 
@@ -86,25 +86,78 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
 
     Args:
         batch: A DataProto object containing batch data with token-level scores, rewards, advantages, etc.
+        unique_wg_ids: List of unique working group IDs used to split the batch into sub-batches for multi-agent training.
         use_critic: Whether to include critic-specific metrics. Defaults to True.
 
     Returns:
         A dictionary of metrics including:
-            - critic/score/mean, max, min: Statistics about sequence scores
-            - critic/rewards/mean, max, min: Statistics about sequence rewards
-            - critic/advantages/mean, max, min: Statistics about advantages
-            - critic/returns/mean, max, min: Statistics about returns
-            - critic/values/mean, max, min: Statistics about critic values (if use_critic=True)
-            - critic/vf_explained_var: Explained variance of the value function (if use_critic=True)
-            - response_length/mean, max, min, clip_ratio: Statistics about response lengths
-            - prompt_length/mean, max, min, clip_ratio: Statistics about prompt lengths
+            - critic/{wg_id}/score/mean, max, min: Statistics about sequence scores for each wg_id
+            - critic/{wg_id}/rewards/mean, max, min: Statistics about sequence rewards for each wg_id
+            - critic/{wg_id}/advantages/mean, max, min: Statistics about advantages for each wg_id
+            - critic/{wg_id}/returns/mean, max, min: Statistics about returns for each wg_id
+            - critic/{wg_id}/values/mean, max, min: Statistics about critic values for each wg_id (if use_critic=True)
+            - critic/{wg_id}/vf_explained_var: Explained variance of the value function for each wg_id (if use_critic=True)
+            - response_length/mean, max, min, clip_ratio: Statistics about response lengths (global)
+            - prompt_length/mean, max, min, clip_ratio: Statistics about prompt lengths (global)
+            - episode/*: Episode-level metrics (global)
     """
-    sequence_score = batch.batch["token_level_scores"].sum(-1)
-    sequence_reward = batch.batch["token_level_rewards"].sum(-1)
-
-    advantages = batch.batch["advantages"]
-    returns = batch.batch["returns"]
-
+    from agent_system.multi_turn_rollout import split_batch_by_wg_ids
+    
+    # Split batch by wg_ids
+    multiagent_batch = split_batch_by_wg_ids(batch, unique_wg_ids)
+    
+    metrics = {}
+    
+    # Compute critic metrics for each wg_id
+    for wg_id, sub_batch in multiagent_batch.items():
+        sequence_score = sub_batch.batch["token_level_scores"].sum(-1)
+        sequence_reward = sub_batch.batch["token_level_rewards"].sum(-1)
+        advantages = sub_batch.batch["advantages"]
+        returns = sub_batch.batch["returns"]
+        
+        max_response_length = sub_batch.batch["responses"].shape[-1]
+        response_mask = sub_batch.batch["attention_mask"][:, -max_response_length:].bool()
+        
+        valid_adv = torch.masked_select(advantages, response_mask)
+        valid_returns = torch.masked_select(returns, response_mask)
+        
+        if use_critic:
+            values = sub_batch.batch["values"]
+            valid_values = torch.masked_select(values, response_mask)
+            return_diff_var = torch.var(valid_returns - valid_values)
+            return_var = torch.var(valid_returns)
+        
+        # Add critic metrics for this wg_id
+        metrics.update({
+            # score
+            f"critic/{wg_id}/score/mean": torch.mean(sequence_score).detach().item(),
+            f"critic/{wg_id}/score/max": torch.max(sequence_score).detach().item(),
+            f"critic/{wg_id}/score/min": torch.min(sequence_score).detach().item(),
+            # reward
+            f"critic/{wg_id}/rewards/mean": torch.mean(sequence_reward).detach().item(),
+            f"critic/{wg_id}/rewards/max": torch.max(sequence_reward).detach().item(),
+            f"critic/{wg_id}/rewards/min": torch.min(sequence_reward).detach().item(),
+            # adv
+            f"critic/{wg_id}/advantages/mean": torch.mean(valid_adv).detach().item(),
+            f"critic/{wg_id}/advantages/max": torch.max(valid_adv).detach().item(),
+            f"critic/{wg_id}/advantages/min": torch.min(valid_adv).detach().item(),
+            # returns
+            f"critic/{wg_id}/returns/mean": torch.mean(valid_returns).detach().item(),
+            f"critic/{wg_id}/returns/max": torch.max(valid_returns).detach().item(),
+            f"critic/{wg_id}/returns/min": torch.min(valid_returns).detach().item(),
+        })
+        
+        if use_critic:
+            metrics.update({
+                # values
+                f"critic/{wg_id}/values/mean": torch.mean(valid_values).detach().item(),
+                f"critic/{wg_id}/values/max": torch.max(valid_values).detach().item(),
+                f"critic/{wg_id}/values/min": torch.min(valid_values).detach().item(),
+                # vf explained var
+                f"critic/{wg_id}/vf_explained_var": (1.0 - return_diff_var / (return_var + 1e-5)).detach().item(),
+            })
+    
+    # Compute global metrics (response_length, prompt_length, episode)
     max_response_length = batch.batch["responses"].shape[-1]
 
     prompt_mask = batch.batch["attention_mask"][:, :-max_response_length].bool()
@@ -115,46 +168,11 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
     response_info = _compute_response_info(batch)
     prompt_length = response_info["prompt_length"]
     response_length = response_info["response_length"]
-
-    valid_adv = torch.masked_select(advantages, response_mask)
-    valid_returns = torch.masked_select(returns, response_mask)
+    
     unique_traj_uid, unique_idx = np.unique(batch.non_tensor_batch['traj_uid'], return_index=True)
     
-    if use_critic:
-        values = batch.batch["values"]
-        valid_values = torch.masked_select(values, response_mask)
-        return_diff_var = torch.var(valid_returns - valid_values)
-        return_var = torch.var(valid_returns)
-
-    metrics = {
-        # score
-        "critic/score/mean": torch.mean(sequence_score).detach().item(),
-        "critic/score/max": torch.max(sequence_score).detach().item(),
-        "critic/score/min": torch.min(sequence_score).detach().item(),
-        # reward
-        "critic/rewards/mean": torch.mean(sequence_reward).detach().item(),
-        "critic/rewards/max": torch.max(sequence_reward).detach().item(),
-        "critic/rewards/min": torch.min(sequence_reward).detach().item(),
-        # adv
-        "critic/advantages/mean": torch.mean(valid_adv).detach().item(),
-        "critic/advantages/max": torch.max(valid_adv).detach().item(),
-        "critic/advantages/min": torch.min(valid_adv).detach().item(),
-        # returns
-        "critic/returns/mean": torch.mean(valid_returns).detach().item(),
-        "critic/returns/max": torch.max(valid_returns).detach().item(),
-        "critic/returns/min": torch.min(valid_returns).detach().item(),
-        **(
-            {
-                # values
-                "critic/values/mean": torch.mean(valid_values).detach().item(),
-                "critic/values/max": torch.max(valid_values).detach().item(),
-                "critic/values/min": torch.min(valid_values).detach().item(),
-                # vf explained var
-                "critic/vf_explained_var": (1.0 - return_diff_var / (return_var + 1e-5)).detach().item(),
-            }
-            if use_critic
-            else {}
-        ),
+    # Add global metrics
+    metrics.update({
         # response length
         "response_length/mean": torch.mean(response_length).detach().item(),
         "response_length/max": torch.max(response_length).detach().item(),
@@ -180,12 +198,12 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
             batch.non_tensor_batch["episode_lengths"][unique_idx].min().item(),
         "episode/tool_call_count/mean": 
             batch.non_tensor_batch["tool_callings"][unique_idx].mean().item(),
-        "episode/tool_call_count/max":
-            batch.non_tensor_batch["tool_callings"][unique_idx].max().item(),
-        "episode/tool_call_count/min":
-            batch.non_tensor_batch["tool_callings"][unique_idx].min().item(),
-        **({f"episode/{k}": v[0].item() for k, v in batch.non_tensor_batch.items() if "success_rate" in k}),
-    }
+        # "episode/tool_call_count/max":
+        #     batch.non_tensor_batch["tool_callings"][unique_idx].max().item(),
+        # "episode/tool_call_count/min":
+        #     batch.non_tensor_batch["tool_callings"][unique_idx].min().item(),
+        **({f"episode/{k.replace('success_rate', 'pass@1')}": v[0].item() for k, v in batch.non_tensor_batch.items() if "success_rate" in k}), # replace success_rate to pass@1
+    })
     return metrics
 
 

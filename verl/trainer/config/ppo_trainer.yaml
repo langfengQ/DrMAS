@@ -19,6 +19,7 @@ data:
   image_key: images
   video_key: videos
   trust_remote_code: False  # main_ppo will check this config to determine whether to use remote code for tokenizer
+  apply_chat_template_kwargs: {}
   custom_cls:
       path: null
       name: null
@@ -235,6 +236,7 @@ algorithm:
   lam: 1.0
   adv_estimator: gae
   norm_adv_by_std_in_grpo: True
+  group_by_agent_id: False # Whether to group by both uid and agent_id in GRPO advantage computation
   use_kl_in_reward: False
   kl_penalty: kl  # how to estimate kl divergence
   kl_ctrl:
@@ -271,6 +273,7 @@ trainer:
   # auto: find the last ckpt to resume. If can't find, start from scratch
   resume_mode: auto # or disable or resume_path if resume_from_path is set
   resume_from_path: null
+  val_only: False
   val_before_train: True
   test_freq: -1
   critic_warmup: 0
@@ -289,16 +292,18 @@ ray_init:
 
 agent: # only for multi-agent training
   multi_agent: True # True for multi-agent training, False for single-agent training
-  agent_ids: ["Reflexion Agent", "Action Agent", "Memory Agent"] # ["Reflexion Agent", "Planning Agent", "Action Agent", "Memory Agent"]
-  model_ids: ["Qwen/Qwen2.5-3B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-3B-Instruct"]
-  train_start_step: null
-  model_sharing: False 
-  agent_specific_parameters: null # Optional: define agent-specific parameter overrides (only support actor_rollout_ref), e.g., ["actor.optim.lr", "actor.ppo_micro_batch_size_per_gpu"]
-  orchestra_type: chain
+  agent_ids: ["Solver Agent","Verifier Agent"]
+  model_ids: ["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]  # "meta-llama/Llama-3.2-3B-Instruct" / "Qwen/Qwen3-4B" / "Qwen/Qwen2.5-1.5B-Instruct"
+  model_sharing: False  # False: each agent has a unique model, True: share the same model across agents
+  agent_specific_parameters: null # Optional: define agent-specific parameter overrides (only support actor_rollout_ref)
+  #  Dictionary format - parameter paths mapped to lists of values per agent
+  #   agent_specific_parameters.actor.optim.lr: [1e-6,1e-6,1e-7]
+  #   agent_specific_parameters.actor.ppo_micro_batch_size_per_gpu: [4,8,8]
+  orchestra_type: math
   use_agent_memory: False
-  random_dropout: False
-  random_dropout_ratio: 0.2
-
+  orchestra:
+    math:
+      max_loop_num: 3
 
 env:
   env_name: alfworld/AlfredTWEnv

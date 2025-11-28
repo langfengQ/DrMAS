@@ -32,17 +32,27 @@ def update_text_action(text_actions: List[str], text_response: List[str], agent_
 
 
 class SearchMultiAgentOrchestra(BaseOrchestra):
-    """Sequentially run agents, passing observation and batch through each agent.
-    This orchestra runs agents in a chain, where each agent processes the output
-    of the previous agent and passes its output to the next agent.
-    It is useful for scenarios where agents need to work in a sequence, such as
-    in a pipeline or a multi‑step process.
+    """
+    The architecture consists of:
+    1. Search Agent: Generates search queries to gather information
+    2. Verifier Agent: Determines if information is sufficient to answer
+    3. Answer Agent: Generates final answer when information is sufficient
+    
+
+   Verifier Agent (Router) → Evaluates if historical information is sufficient
+        ├─ If "no" → 2a. Search Agent → Generates search query → Return search query
+        └─ If "yes" → 2b. Answer Agent → Generates answer → Return answer
+
     Args:
         agent_ids (List[str]): List of agent names to be executed in sequence.
         tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
         processor: Processor for handling data.
         config (Any): Configuration object containing settings for the orchestra.
     """
+    # Agent type constants
+    VERIFIER_AGENT = "Verifier Agent"
+    SEARCH_AGENT = "Search Agent"
+    ANSWER_AGENT = "Answer Agent"
     def __init__(
         self,
         agent_ids: List[str],
@@ -52,7 +62,20 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         processors: Dict[str, Any] = None,
         config: Any = None,
     ):
+        """Initialize the search multi-agent orchestra.
+        
+        Args:
+            agent_ids: List of agent names to be executed in sequence
+            model_ids: List of model identifiers
+            agents_to_wg_mapping: Mapping from agent names to worker group IDs
+            tokenizers: Dictionary of tokenizers for each worker group
+            processors: Dictionary of processors for each worker group
+            config: Configuration object containing settings for the orchestra
+        """
+        # Import search agents module
         importlib.import_module("agent_system.agent.agents.search")
+
+        # Initialize base class
         super().__init__(
             agent_ids=agent_ids,
             model_ids=model_ids,
@@ -64,75 +87,87 @@ class SearchMultiAgentOrchestra(BaseOrchestra):
         if not self.agents:
             raise ValueError("Orchestra requires at least one agent.")
 
-        if self.config.agent.use_agent_memory and "Memory Agent" not in self.agent_ids:
-            raise ValueError("Memory Agent is required to use agent memory. Please add it to the agent_ids.")
+        # Validate that required agents are present
+        if self.SEARCH_AGENT not in self.agent_ids:
+            raise ValueError("Search Agent is required. Please add it to the agent_ids.")
+        if self.VERIFIER_AGENT not in self.agent_ids:
+            raise ValueError("Verifier Agent is required. Please add it to the agent_ids.")
+        if self.ANSWER_AGENT not in self.agent_ids:
+            raise ValueError("Answer Agent is required. Please add it to the agent_ids.")
         
         # The order of agents is the execution order.
         self.agent_order = self.agent_ids
-        self.random_dropout = self.config.agent.random_dropout
-        self.random_dropout_ratio = self.config.agent.random_dropout_ratio
-
-        self.output_agent = "Search Agent"
-        self.critic_agent = "Critic Agent"
-        self.reflexion_agent = "Reflexion Agent"
-        self.enable_critic = self.critic_agent in self.agent_order
-        # if self.agent_order[-1] != "ActionAgent":
-        #     raise ValueError("The last agent must be ActionAgent.")
-        self.max_loop_num = 2
 
     def run(self, gen_batch: DataProto, env_obs: Dict[str, Any], actor_rollout_wgs, active_masks: np.ndarray, step: int) -> Tuple[List[str], Dict[str, DataProto]]:
+        """Run the orchestra with the three-agent architecture using Verifier as router.
+        
+        Execution flow:
+        1. Verifier Agent determines if current information is sufficient (routing decision)
+        2. If sufficient (yes): Answer Agent generates final answer
+        3. If insufficient (no): Search Agent generates search query
+        4. Return: Answer Agent output if verifier says yes, Search Agent output if verifier says no
+        """
         # clear and reset multiagent batch buffer
         self.reset_buffer()
         text_actions, team_context, env_obs = self.initialize_context(env_obs)
+        agent_active_mask = np.logical_and(np.ones(len(gen_batch), dtype=bool), active_masks).astype(bool)
+            
+        # Step 1: Run Verifier Agent (Router)
+        actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.VERIFIER_AGENT]]
+        
+        batch, text_repsonses = self.agents[self.VERIFIER_AGENT].call(
+            gen_batch=gen_batch,
+            env_obs=env_obs,
+            team_context=team_context,
+            actor_rollout_wg=actor_rollout_wg,
+            agent_active_mask=agent_active_mask,
+            step=step,
+        )
+        
+        team_context = update_team_context(self.VERIFIER_AGENT, team_context, text_repsonses, agent_active_mask)
+        self.save_to_buffer(self.VERIFIER_AGENT, batch)
+        
+        # Get verification results (True = sufficient, False = need more info)
+        verification_vector = self.agents[self.VERIFIER_AGENT].get_verification_vector(text_repsonses, agent_active_mask)
+        search_active_mask = np.logical_and(agent_active_mask, np.logical_not(verification_vector)).astype(bool)
+        answer_active_mask = np.logical_and(agent_active_mask, verification_vector).astype(bool)
+            
+        # Step 2: Conditionally run Search Agent (when verification says no)
+        if search_active_mask.any() and step < self.config.env.max_steps:
+            actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.SEARCH_AGENT]]
+            
+            batch, text_repsonses = self.agents[self.SEARCH_AGENT].call(
+                gen_batch=gen_batch,
+                env_obs=env_obs,
+                team_context=team_context,
+                actor_rollout_wg=actor_rollout_wg,
+                agent_active_mask=search_active_mask,
+                step=step,
+            )
+            
+            team_context = update_team_context(self.SEARCH_AGENT, team_context, text_repsonses, search_active_mask)
+            self.save_to_buffer(self.SEARCH_AGENT, batch)
+            
+            # Update text_actions with Search Agent output for samples needing more info
+            text_actions = update_text_action(text_actions, text_repsonses, search_active_mask)
+        
+        # Step 3: Conditionally run Answer Agent (when verification says yes)
+        if answer_active_mask.any():
+            actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.ANSWER_AGENT]]
+            
+            batch, text_repsonses = self.agents[self.ANSWER_AGENT].call(
+                gen_batch=gen_batch,
+                env_obs=env_obs,
+                team_context=team_context,
+                actor_rollout_wg=actor_rollout_wg,
+                agent_active_mask=answer_active_mask,
+                step=step,
+            )
+            
+            team_context = update_team_context(self.ANSWER_AGENT, team_context, text_repsonses, answer_active_mask)
+            self.save_to_buffer(self.ANSWER_AGENT, batch)
+            
+            # Update text_actions with Answer Agent output for verified samples
+            text_actions = update_text_action(text_actions, text_repsonses, answer_active_mask)
 
-        if self.enable_critic:
-            approved_vector = np.zeros(len(gen_batch), dtype=bool)  # Vector to track if the action is approved
-
-        for loop_i in range(self.max_loop_num):
-            # run agents sequentially, passing observation and batch
-            for name in self.agent_order:
-
-                if name == self.reflexion_agent:
-                    if step == 1 or loop_i != 0:
-                        continue
-
-                # skip last time for critic agent
-                if name == self.critic_agent and loop_i == self.max_loop_num - 1:
-                    break
-                    
-                agent_active_mask = np.ones(len(gen_batch), dtype=bool)
-                if self.random_dropout and name != self.output_agent:
-                    agent_active_mask = np.random.binomial(1, self.random_dropout_ratio, size=len(gen_batch)).astype(bool)
-
-                agent_active_mask = np.logical_and(agent_active_mask, active_masks).astype(bool)
-                
-                if self.enable_critic:
-                    # AND for agent_active_mask and (not approved_vector)
-                    agent_active_mask = np.logical_and(agent_active_mask, np.logical_not(approved_vector)).astype(bool)
-                    
-                actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[name]]
-                batch, text_repsonses = self.agents[name].call(gen_batch=gen_batch, 
-                                                                env_obs=env_obs, 
-                                                                team_context=team_context, 
-                                                                actor_rollout_wg=actor_rollout_wg,
-                                                                agent_active_mask=agent_active_mask, 
-                                                                step=step,
-                                                                )
-                
-                team_context = update_team_context(name, team_context, text_repsonses, agent_active_mask)
-                # save the batch to the multiagent buffer
-                self.save_to_buffer(name, batch)
-
-                if name == self.critic_agent and self.enable_critic:
-                    approved_vector = self.agents[self.critic_agent].update_approved_vector(text_repsonses, approved_vector, agent_active_mask)
-                elif name == self.output_agent:
-                    text_actions = update_text_action(text_actions, text_repsonses, agent_active_mask)
-
-            if not self.enable_critic:
-                break
-            if approved_vector.all():
-                break
-
-        # if len(self.multiagent_batch_buffer) != len(self.agent_order):
-        #     raise Warning("Multiagent output batch buffer length does not match number of agents. This may lead to unexpected behavior.")
         return text_actions, self.multiagent_batch_buffer

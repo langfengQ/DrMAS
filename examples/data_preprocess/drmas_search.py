@@ -1,18 +1,3 @@
-# Copyright 2024 Bytedance Ltd. and/or its affiliates
-# Copyright 2023-2024 SGLang Team
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import argparse
 import logging
 import os
@@ -154,16 +139,19 @@ def main():
                 df_raw = pd.read_parquet(local_parquet_filepath)
                 logger.info(f"Loaded {len(df_raw)} rows from {parquet_filename}")
 
-                # Sample 30 rows per data_source for test split
-                if split == "test" and args.samples_per_source > 0:
-                    logger.info(f"Sampling {args.samples_per_source} rows per data_source for test split...")
-                    df_raw = sample_by_data_source(df_raw, samples_per_source=args.samples_per_source)
-                    logger.info(f"After sampling: {len(df_raw)} rows remain")
-
                 def apply_process_row(row, split_name=split):
                     return process_single_row(row, current_split_name=split_name, row_index=row.name)
 
                 df_processed = df_raw.apply(apply_process_row, axis=1)
+                # Sample 30 rows per data_source for test split
+                if split == "test":
+                    df_raw_sampled = sample_by_data_source(df_raw, samples_per_source=30)
+                    logger.info(f"After sampling: {len(df_raw_sampled)} rows remain")
+                    df_processed_sampled = df_raw_sampled.apply(apply_process_row, axis=1)
+                    output_file_path_sampled = os.path.join(local_save_dir, f"{split}_sampled.parquet")
+                    df_processed_sampled.to_parquet(output_file_path_sampled, index=False)
+                    logger.info(f"Saved {len(df_processed_sampled)} processed rows to {output_file_path_sampled}")
+                    processed_files.append(output_file_path_sampled)
 
                 # Save processed DataFrame
                 output_file_path = os.path.join(local_save_dir, f"{split}.parquet")
@@ -199,16 +187,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--local_dir",
-        default="~/data/searchR1_processed_direct",
+        default="~/data/drmas_search",
         help="Local directory to save the processed Parquet files.",
     )
     parser.add_argument("--hdfs_dir", default=None, help="Optional HDFS directory to copy the Parquet files to.")
-    parser.add_argument(
-        "--samples_per_source",
-        type=int,
-        default=-1,
-        help="Number of samples to take from each data_source in test split (default: 30)."
-    )
     args = parser.parse_args()
 
     # System and user content configuration

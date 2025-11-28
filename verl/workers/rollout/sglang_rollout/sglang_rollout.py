@@ -268,7 +268,7 @@ class SGLangRollout(BaseRollout):
                 trust_remote_code=trust_remote_code,
                 # NOTE(linjunrong): add rank to prevent SGLang generate same port inside PortArgs.init_new
                 # when random.seed is being set during training
-                port=30000 + rank,
+                port=30000 + rank + self.config.agent_port * 100,
                 # NOTE(Chenyang): if you want to debug the SGLang engine output
                 # please set the following parameters
                 # Otherwise, it will make the engine run too slow
@@ -283,6 +283,11 @@ class SGLangRollout(BaseRollout):
         self.sharding_manager = None
         # offload
         if self._tp_rank == 0:
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
             self._engine.release_memory_occupation()
         self.is_sleep = True
         

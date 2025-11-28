@@ -242,7 +242,7 @@ def compute_response_mask(data: DataProto):
     return attention_mask[:, -response_length:]
 
 
-def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, step_advantage_w=1.0, gigpo_mode="mean_std_norm", gigpo_enable_similarity=False, gigpo_similarity_thresh=0.95, **kwargs):
+def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, group_by_agent_id=False, step_advantage_w=1.0, gigpo_mode="mean_std_norm", gigpo_enable_similarity=False, gigpo_similarity_thresh=0.95, **kwargs):
     """Compute advantage estimates for policy optimization.
 
     This function computes advantage estimates using various estimators like GAE, GRPO, REINFORCE++, etc.
@@ -263,6 +263,13 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
     # Back-compatible with trainers that do not compute response mask in fit
     if "response_mask" not in data.batch:
         data.batch["response_mask"] = compute_response_mask(data)
+    # Determine grouping strategy based on configuration
+    if group_by_agent_id:
+        # Group by both uid and agent_id
+        group_index = np.array([f"{uid}_{agent_id}" for uid, agent_id in zip(data.non_tensor_batch["uid"], data.non_tensor_batch["agent_id"])], dtype=object)
+    else:
+        # Use original uid grouping
+        group_index = data.non_tensor_batch["uid"]
     # prepare response group
     # TODO: add other ways to estimate advantages
     if adv_estimator == AdvantageEstimator.GAE:
@@ -292,9 +299,10 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         advantages, returns = core_algos.compute_grpo_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=grpo_calculation_mask,
-            index=data.non_tensor_batch["uid"],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            group_by_agent_id=group_by_agent_id,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -302,9 +310,10 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         advantages, returns = core_algos.compute_grpo_passk_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=data.batch["response_mask"],
-            index=data.non_tensor_batch["uid"],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+            group_by_agent_id=group_by_agent_id,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -312,8 +321,9 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         advantages, returns = core_algos.compute_reinforce_plus_plus_baseline_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=data.batch["response_mask"],
-            index=data.non_tensor_batch["uid"],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
+            group_by_agent_id=group_by_agent_id,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -338,8 +348,9 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         advantages, returns = core_algos.compute_rloo_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=data.batch["response_mask"],
-            index=data.non_tensor_batch["uid"],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
+            group_by_agent_id=group_by_agent_id,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -349,12 +360,13 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             step_rewards=data.batch['step_rewards'], # for step group reward computing
             response_mask=data.batch['response_mask'],
             anchor_obs=data.non_tensor_batch['anchor_obs'],
-            index=data.non_tensor_batch['uid'],
+            index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             step_advantage_w=step_advantage_w,
             mode=gigpo_mode,
             enable_similarity=gigpo_enable_similarity,
             similarity_thresh=gigpo_similarity_thresh,
+            group_by_agent_id=group_by_agent_id,
             )
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
@@ -471,11 +483,31 @@ class RayPPOTrainer:
         else:
             raise NotImplementedError
 
-        self._validate_config()
+        self._validate_multi_agent_config()
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
+    
 
-    def _validate_config(self):
-        config = self.config
+    def _validate_multi_agent_config(self):
+        """Validate configuration for each agent after agent-specific parameters are applied."""
+        from omegaconf import OmegaConf
+        
+        for wg_id, agents_configs in self.wg_to_agents_mapping.items():
+            for ac in agents_configs:
+                agent_id = ac.get("agent_id", "unknown")
+                # Create a temporary config by merging agent-specific actor_rollout_ref with base config
+                temp_config = OmegaConf.create(OmegaConf.to_container(self.config, resolve=True))
+                # Replace actor_rollout_ref with agent-specific config
+                temp_config.actor_rollout_ref = ac["config_actor_rollout_ref"]
+                # Validate this agent's config
+                try:
+                    self._validate_config(temp_config)
+                except (ValueError, AssertionError) as e:
+                    raise ValueError(
+                        f"[Agent {agent_id} in WG {wg_id}] Configuration validation failed: {str(e)}"
+                    ) from e
+
+    def _validate_config(self, config):
+        # config = self.config
         # number of GPUs total
         n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
 
@@ -833,11 +865,11 @@ class RayPPOTrainer:
 
         for data_source, tool_calls in data_source_tool_calling.items():
             metric_dict[f'val/{data_source}/tool_call_count/mean'] = np.mean(tool_calls)
-            metric_dict[f'val/{data_source}/tool_call_count/max'] = np.max(tool_calls)
-            metric_dict[f'val/{data_source}/tool_call_count/min'] = np.min(tool_calls)
+            # metric_dict[f'val/{data_source}/tool_call_count/max'] = np.max(tool_calls)
+            # metric_dict[f'val/{data_source}/tool_call_count/min'] = np.min(tool_calls)
 
         for k, v in success_rate.items():
-            metric_dict[f'val/{k}'] = v
+            metric_dict[f'val/{k.replace("success_rate", "pass@1")}'] = v
 
         return metric_dict
 
@@ -1150,15 +1182,17 @@ class RayPPOTrainer:
                     # multiagent_batch (Dict[str, DataProto]): Dictionary mapping unique_wg_ids to their respective DataProto batches
                     unique_wg_ids = list(self.wg_to_agents_mapping.keys())
 
-                    if self.config.agent.train_start_step is not None:
-                        update_agent_ids = [agent_i for (agent_i, train_start_step_i) in zip(self.config.agent.agent_ids, self.config.agent.train_start_step) if train_start_step_i <= self.global_steps]
-                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids, update_agent_ids=update_agent_ids)
-                    else:
-                        multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids)
+                    multiagent_batch: Dict[str, DataProto] = split_batch_by_wg_ids(batch, unique_wg_ids)
 
                     for wg_id in multiagent_batch.keys():
                         sub_batch = multiagent_batch[wg_id]
-                        sub_batch = adjust_batch(self.config, sub_batch, wg_id=wg_id)
+                        
+                        # Create agent-specific config for adjust_batch
+                        agent_config = OmegaConf.create(OmegaConf.to_container(self.config, resolve=True))
+                        # Replace actor_rollout_ref with agent-specific config
+                        agent_config.actor_rollout_ref = self.wg_to_agents_mapping[wg_id][0]["config_actor_rollout_ref"]
+                        
+                        sub_batch = adjust_batch(agent_config, sub_batch, wg_id=wg_id)
                         multiagent_batch[wg_id] = sub_batch
                     
                         sub_batch.batch["response_mask"] = compute_response_mask(sub_batch)
@@ -1278,6 +1312,7 @@ class RayPPOTrainer:
                         # compute advantages, executed on the driver process
 
                         norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)  # GRPO adv normalization factor
+                        group_by_agent_id = self.config.algorithm.get("group_by_agent_id", False) # 
 
                         batch = compute_advantage(
                             batch,
@@ -1286,6 +1321,7 @@ class RayPPOTrainer:
                             lam=self.config.algorithm.lam,
                             num_repeat=self.config.actor_rollout_ref.rollout.n,
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+                            group_by_agent_id=group_by_agent_id,
                             multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
                             use_pf_ppo=self.config.algorithm.use_pf_ppo,
                             pf_ppo_reweight_method=self.config.algorithm.pf_ppo.reweight_method,
@@ -1364,7 +1400,7 @@ class RayPPOTrainer:
                     }
                 )
                 # collect metrics
-                metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
+                metrics.update(compute_data_metrics(batch=batch, unique_wg_ids=unique_wg_ids, use_critic=self.use_critic))
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()
