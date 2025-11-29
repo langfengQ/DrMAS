@@ -47,8 +47,40 @@ model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:u
 experiment_name="drmas${group_by_agent_id}_share${model_sharing}_${model_name_tag}"
 default_local_dir="/mnt/hdfs/tiktok_aiic/user/longtao.zheng/multiagent_checkpoints/${experiment_name}"
 
-export MASTER_ADDR=$ARNOLD_WORKER_0_HOST
-export MASTER_PORT=$PORT0
+DEFAULT_MASTER_ADDR=${ARNOLD_WORKER_0_HOST:-127.0.0.1}
+
+choose_master_port() {
+python3 - <<'PY'
+import os, socket, sys
+
+def port_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("", port))
+        except OSError:
+            return False
+        return True
+
+candidates = []
+for key in ("MASTER_PORT", "PORT0"):
+    val = os.environ.get(key)
+    if val and val.isdigit():
+        candidates.append(int(val))
+
+for port in candidates:
+    if port_free(port):
+        print(port)
+        sys.exit(0)
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.bind(("", 0))
+    print(s.getsockname()[1])
+PY
+}
+
+export MASTER_ADDR=$DEFAULT_MASTER_ADDR
+export MASTER_PORT=$(choose_master_port)
+echo "MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT}"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
