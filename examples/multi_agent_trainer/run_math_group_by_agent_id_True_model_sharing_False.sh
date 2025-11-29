@@ -23,7 +23,7 @@ group_by_agent_id=True
 
 ##################### Agent Configurations #####################
 agent_ids='["Solver Agent","Verifier Agent"]'
-model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
+model_ids='["Qwen/Qwen3-8B","Qwen/Qwen3-8B"]'
 model_sharing=False
 
 orchestra_type=math
