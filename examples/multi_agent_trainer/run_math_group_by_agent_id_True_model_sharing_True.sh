@@ -31,7 +31,7 @@ max_loop_num=2
 
 # Agent-specific parameter override (only support actor_rollout_ref)
 actor_optim_lr='[1e-6,1e-6]'
-actor_ppo_micro_batch_size_per_gpu='[2,2]'
+actor_ppo_micro_batch_size_per_gpu='[1,1]'
 
 ##################### Training Configurations #################
 group_size=8
