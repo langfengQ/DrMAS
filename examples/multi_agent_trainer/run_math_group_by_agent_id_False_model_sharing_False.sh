@@ -47,7 +47,17 @@ model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:u
 experiment_name="drmas${group_by_agent_id}_share${model_sharing}_${model_name_tag}"
 default_local_dir="/mnt/hdfs/tiktok_aiic/user/longtao.zheng/multiagent_checkpoints/${experiment_name}"
 
-python3 -m verl.trainer.main_ppo \
+export GPUS_PER_NODE=$ARNOLD_WORKER_GPU
+export NNODES=$ARNOLD_WORKER_NUM
+export NODE_RANK=$ARNOLD_ID
+export MASTER_ADDR=$ARNOLD_WORKER_0_HOST
+export MASTER_PORT=$PORT0
+
+torchrun --nproc-per-node $GPUS_PER_NODE \
+    --master-addr $MASTER_ADDR \
+    --node-rank $NODE_RANK \
+    --master-port $MASTER_PORT \
+    --nnodes $NNODES -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
     data.train_files=$TRAIN_DATA \
     data.val_files=$VAL_DATA \
