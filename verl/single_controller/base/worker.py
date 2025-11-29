@@ -66,6 +66,12 @@ class WorkerHelper:
             return sock.getsockname()[1]
 
     def get_availale_master_addr_port(self):
+        env_addr = os.getenv("MASTER_ADDR")
+        env_port = os.getenv("MASTER_PORT")
+
+        if env_addr and env_port:
+            return env_addr, env_port
+
         return self._get_node_ip(), str(self._get_free_port())
 
     def _get_pid(self):
