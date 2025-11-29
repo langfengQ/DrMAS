@@ -45,6 +45,7 @@ max_response_length=4096
 model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
 
 experiment_name="drmas${group_by_agent_id}_share${model_sharing}_${model_name_tag}"
+default_local_dir="/mnt/hdfs/tiktok_aiic/user/longtao.zheng/multiagent_checkpoints/${experiment_name}"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
@@ -93,6 +94,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_math' \
     trainer.experiment_name="$experiment_name" \
+    trainer.default_local_dir="$default_local_dir" \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
