@@ -1,4 +1,5 @@
 set -x
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 MODE=${1:-train}
 if [ "$MODE" == "eval" ] || [ "$MODE" == "evaluation" ]; then
@@ -7,14 +8,16 @@ if [ "$MODE" == "eval" ] || [ "$MODE" == "evaluation" ]; then
     TRAIN_DATA="$HOME/data/drmas_search/train.parquet"
     VAL_DATA="$HOME/data/drmas_search/test.parquet" # Full test dataset
     train_data_size=128
-    val_data_size=512
+    val_data_size=64
+    val_group_size=16  # For pass@16 and avg@16 computation during evaluation
 else
     echo "Running in training mode"
     VAL_ONLY=False
     TRAIN_DATA="$HOME/data/drmas_search/train.parquet"
     VAL_DATA="$HOME/data/drmas_search/test_sampled.parquet" # For fast validation during training (sample 30 entries per data source, total 210 samples)
     train_data_size=128
-    val_data_size=512
+    val_data_size=256
+    val_group_size=1
 fi
 
 ###################### Algorithm Configurations #################
@@ -79,6 +82,9 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+    actor_rollout_ref.rollout.val_kwargs.top_p=0.95 \
+    actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     algorithm.group_by_agent_id=$group_by_agent_id \
@@ -87,6 +93,7 @@ python3 -m verl.trainer.main_ppo \
     env.search.search_url='http://127.0.0.1:7856/retrieve' \
     env.max_steps=$max_turn \
     env.rollout.n=$group_size \
+    env.rollout.val_n=$val_group_size \
     env.history_length=$max_turn \
     agent.agent_ids="$agent_ids" \
     agent.model_ids="$model_ids" \
