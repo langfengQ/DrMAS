@@ -89,6 +89,7 @@ python3 -m verl.trainer.main_ppo \
     env.env_name=math \
     env.seed=0 \
     env.rollout.n=$group_size \
+    env.rollout.val_n=$val_group_size \
     agent.agent_ids="$agent_ids" \
     agent.model_ids="$model_ids" \
     agent.model_sharing=$model_sharing \
