@@ -747,6 +747,9 @@ class RayPPOTrainer:
         sample_outputs = []
         sample_scores = []
 
+        # Add progress bar for validation
+        val_progress_bar = tqdm(total=len(self.val_dataloader), desc="Validation Progress")
+
         for test_data in self.val_dataloader:
             test_batch = DataProto.from_single_dict(test_data)
 
@@ -755,6 +758,7 @@ class RayPPOTrainer:
 
             # we only do validation on rule-based rm
             if self.config.reward_model.enable and test_batch[0].non_tensor_batch["reward_model"]["style"] == "model":
+                val_progress_bar.close()
                 return {}
 
             # Store original inputs
@@ -824,6 +828,9 @@ class RayPPOTrainer:
             traj_uid_list.append(test_output_gen_batch.non_tensor_batch['traj_uid'])
             uid_list.append(test_output_gen_batch.non_tensor_batch['uid'])  # Collect uid for grouping
             task_pass_lst.append(test_output_gen_batch.non_tensor_batch['pass'])
+
+            # Update validation progress bar
+            val_progress_bar.update(1)
 
             # success rate
             # for k in test_batch.non_tensor_batch.keys():
@@ -902,6 +909,7 @@ class RayPPOTrainer:
                 )
                 metric_dict.update({f'val/{data_source}/{k}': v for k, v in ds_passk_avgk_metrics.items()})
 
+        val_progress_bar.close()
         return metric_dict
 
     def init_workers(self):
