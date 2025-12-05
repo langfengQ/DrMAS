@@ -76,7 +76,7 @@ def _compute_response_info(batch: DataProto) -> Dict[str, Any]:
     )
 
 
-def compute_data_metrics(batch: DataProto, unique_wg_ids: List[str], use_critic: bool = True) -> Dict[str, Any]:
+def compute_data_metrics(batch: DataProto, unique_wg_ids: List[str], group_n: int, use_critic: bool = True) -> Dict[str, Any]:
     """
     Computes various metrics from a batch of data for PPO training.
 
@@ -87,6 +87,7 @@ def compute_data_metrics(batch: DataProto, unique_wg_ids: List[str], use_critic:
     Args:
         batch: A DataProto object containing batch data with token-level scores, rewards, advantages, etc.
         unique_wg_ids: List of unique working group IDs used to split the batch into sub-batches for multi-agent training.
+        group_n: group size.
         use_critic: Whether to include critic-specific metrics. Defaults to True.
 
     Returns:
@@ -169,8 +170,14 @@ def compute_data_metrics(batch: DataProto, unique_wg_ids: List[str], use_critic:
     prompt_length = response_info["prompt_length"]
     response_length = response_info["response_length"]
     
+
+    uids = batch.non_tensor_batch['uid']
+    task_pass = batch.non_tensor_batch['pass']
+
     unique_traj_uid, unique_idx = np.unique(batch.non_tensor_batch['traj_uid'], return_index=True)
-    
+    unique_uids = uids[unique_idx]
+    unique_task_pass = task_pass[unique_idx]
+
     # Add global metrics
     metrics.update({
         # response length
@@ -202,8 +209,16 @@ def compute_data_metrics(batch: DataProto, unique_wg_ids: List[str], use_critic:
         #     batch.non_tensor_batch["tool_callings"][unique_idx].max().item(),
         # "episode/tool_call_count/min":
         #     batch.non_tensor_batch["tool_callings"][unique_idx].min().item(),
-        **({f"episode/{k.replace('success_rate', 'pass@1')}": v[0].item() for k, v in batch.non_tensor_batch.items() if "success_rate" in k}), # replace success_rate to pass@1
+        # **({f"episode/{k.replace('success_rate', 'pass@1')}": v[0].item() for k, v in batch.non_tensor_batch.items() if "success_rate" in k}), # replace success_rate to pass@1
     })
+
+    passk_avgk_metrics = compute_pass_at_k_and_avg_at_k(
+        unique_uids=unique_uids,
+        unique_task_pass=unique_task_pass,
+        k=group_n
+    )
+    metrics.update({f'episode/{k}': v for k, v in passk_avgk_metrics.items()})
+
     return metrics
 
 
@@ -462,3 +477,49 @@ def process_validation_metrics(data_sources: list[str], sample_inputs: list[str]
                 data_src2var2metric2val[data_source][var_name][metric_name] = np.mean(prompt_vals)
 
     return data_src2var2metric2val
+
+
+def compute_pass_at_k_and_avg_at_k(unique_uids, unique_task_pass, k):
+    """Compute pass@k and avg@k metrics for tasks repeated k times.
+    
+    Args:
+        unique_uids: Array of unique identifiers for each task instance
+        unique_task_pass: Array of binary pass/fail indicators (1 for pass, 0 for fail)
+        k: Number of attempts per unique task
+    
+    Returns:
+        dict: Dictionary containing pass@k and avg@k metrics
+    """
+    from collections import defaultdict
+    
+    # Group task passes and rewards by uid
+    uid_to_passes = defaultdict(list)
+    
+    for uid, task_pass in zip(unique_uids, unique_task_pass):
+        uid_to_passes[uid].append(task_pass)
+    
+    # Calculate pass@k: proportion of tasks with at least one success
+    pass_at_k_list = []
+    avg_at_k_list = []
+    
+    for uid in uid_to_passes.keys():
+        passes = uid_to_passes[uid]
+        
+        # pass@k: 1 if any attempt passed, 0 otherwise
+        pass_at_k = 1.0 if any(passes) else 0.0
+        pass_at_k_list.append(pass_at_k)
+        
+        # avg@k: average of passes (success rate) for this task
+        avg_at_k = np.mean(passes)
+        avg_at_k_list.append(avg_at_k)
+    
+    # Calculate overall metrics
+    overall_pass_at_k = np.mean(pass_at_k_list)
+    overall_avg_at_k = np.mean(avg_at_k_list)
+    
+    metrics = {
+        f'pass@{k}': overall_pass_at_k.item(),
+        f'avg@{k}': overall_avg_at_k.item(),
+    }
+    
+    return metrics

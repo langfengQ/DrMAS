@@ -50,6 +50,7 @@ from verl.trainer.ppo.metric_utils import (
     compute_throughout_metrics,
     compute_timing_metrics,
     process_validation_metrics,
+    compute_pass_at_k_and_avg_at_k,
 )
 from verl.trainer.ppo.reward import compute_reward, compute_reward_async
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
@@ -737,12 +738,17 @@ class RayPPOTrainer:
         data_source_lst = []
         tool_calling_list = []
         traj_uid_list = []
-        success_rate_dict = {}
+        uid_list = []  # Add uid collection for grouping
+        task_pass_lst = []
+        # success_rate_dict = {}
 
         # Lists to collect samples for the table
         sample_inputs = []
         sample_outputs = []
         sample_scores = []
+
+        # Add progress bar for validation
+        val_progress_bar = tqdm(total=len(self.val_dataloader), desc="Validation Progress")
 
         for test_data in self.val_dataloader:
             test_batch = DataProto.from_single_dict(test_data)
@@ -752,6 +758,7 @@ class RayPPOTrainer:
 
             # we only do validation on rule-based rm
             if self.config.reward_model.enable and test_batch[0].non_tensor_batch["reward_model"]["style"] == "model":
+                val_progress_bar.close()
                 return {}
 
             # Store original inputs
@@ -819,16 +826,21 @@ class RayPPOTrainer:
             data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
             tool_calling_list.append(test_output_gen_batch.non_tensor_batch['tool_callings'])
             traj_uid_list.append(test_output_gen_batch.non_tensor_batch['traj_uid'])
+            uid_list.append(test_output_gen_batch.non_tensor_batch['uid'])  # Collect uid for grouping
+            task_pass_lst.append(test_output_gen_batch.non_tensor_batch['pass'])
+
+            # Update validation progress bar
+            val_progress_bar.update(1)
 
             # success rate
-            for k in test_batch.non_tensor_batch.keys():
-                if 'success_rate' in k:
-                    if k not in success_rate_dict:
-                        success_rate_dict[k] = []
-                    success_rate_dict[k].append(test_batch.non_tensor_batch[k][0])
-                    # all success_rate should be the same
-                    for i in range(1, len(test_batch.non_tensor_batch[k])):
-                        assert test_batch.non_tensor_batch[k][0] == test_batch.non_tensor_batch[k][i], f'not all success_rate are the same, 0: {test_batch.non_tensor_batch[k][0]}, {i}: {test_batch.non_tensor_batch[k][i]}'
+            # for k in test_batch.non_tensor_batch.keys():
+            #     if 'success_rate' in k:
+            #         if k not in success_rate_dict:
+            #             success_rate_dict[k] = []
+            #         success_rate_dict[k].append(test_batch.non_tensor_batch[k][0])
+            #         # all success_rate should be the same
+            #         for i in range(1, len(test_batch.non_tensor_batch[k])):
+            #             assert test_batch.non_tensor_batch[k][0] == test_batch.non_tensor_batch[k][i], f'not all success_rate are the same, 0: {test_batch.non_tensor_batch[k][0]}, {i}: {test_batch.non_tensor_batch[k][i]}'
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
@@ -836,7 +848,12 @@ class RayPPOTrainer:
         data_sources = np.concatenate(data_source_lst, axis=0)
         tool_callings = np.concatenate(tool_calling_list, axis=0)
         traj_uids = np.concatenate(traj_uid_list, axis=0)
-        success_rate = {k: np.mean(v) for k, v in success_rate_dict.items()}
+        uids = np.concatenate(uid_list, axis=0)  # Group UIDs for task grouping
+        task_pass = np.concatenate(task_pass_lst, axis=0)
+        # success_rate = {k: np.mean(v) for k, v in success_rate_dict.items()}
+
+        # Get validation rollout n for pass@k and avg@k computation
+        val_rollout_n = getattr(self.config.env.rollout, 'val_n', 1)
 
         # evaluate test_score based on data source
         data_source_reward = {}
@@ -852,6 +869,8 @@ class RayPPOTrainer:
         unique_traj_uid, unique_idx = np.unique(traj_uids, return_index=True)
         unique_data_sources = data_sources[unique_idx]
         unique_tool_callings = tool_callings[unique_idx]
+        unique_uids = uids[unique_idx]
+        unique_task_pass = task_pass[unique_idx]
 
         for i in range(unique_tool_callings.shape[0]):
             data_source = unique_data_sources[i]
@@ -868,9 +887,29 @@ class RayPPOTrainer:
             # metric_dict[f'val/{data_source}/tool_call_count/max'] = np.max(tool_calls)
             # metric_dict[f'val/{data_source}/tool_call_count/min'] = np.min(tool_calls)
 
-        for k, v in success_rate.items():
-            metric_dict[f'val/{k.replace("success_rate", "pass@1")}'] = v
+        # for k, v in success_rate.items():
+        #     metric_dict[f'val/{k.replace("success_rate", "pass@1")}'] = v
+        
+        # Compute pass@k and avg@k for all data
+        passk_avgk_metrics = compute_pass_at_k_and_avg_at_k(
+            unique_uids=unique_uids,
+            unique_task_pass=unique_task_pass,
+            k=val_rollout_n
+        )
+        metric_dict.update({f'val/{k}': v for k, v in passk_avgk_metrics.items()})
+        
+        # Compute pass@k and avg@k per data source
+        for data_source in set(unique_data_sources):
+            data_source_mask = unique_data_sources == data_source
+            if np.any(data_source_mask):
+                ds_passk_avgk_metrics = compute_pass_at_k_and_avg_at_k(
+                    unique_uids=unique_uids[data_source_mask],
+                    unique_task_pass=unique_task_pass[data_source_mask],
+                    k=val_rollout_n
+                )
+                metric_dict.update({f'val/{data_source}/{k}': v for k, v in ds_passk_avgk_metrics.items()})
 
+        val_progress_bar.close()
         return metric_dict
 
     def init_workers(self):
@@ -1400,7 +1439,7 @@ class RayPPOTrainer:
                     }
                 )
                 # collect metrics
-                metrics.update(compute_data_metrics(batch=batch, unique_wg_ids=unique_wg_ids, use_critic=self.use_critic))
+                metrics.update(compute_data_metrics(batch=batch, unique_wg_ids=unique_wg_ids, group_n=self.config.env.rollout.n, use_critic=self.use_critic))
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()
