@@ -16,6 +16,7 @@ else
     VAL_DATA="$HOME/data/drmas_math/test_sampled.parquet" # For fast validation during training (test_sampled.parquet contains 50 examples from MATH500, 30 examples from AIME2024, and 30 examples from AIME2025)
     train_data_size=32
     val_data_size=110
+    val_group_size=1
 fi
 
 ###################### Algorithm Configurations #################
@@ -115,12 +116,16 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+    actor_rollout_ref.rollout.val_kwargs.top_p=0.95 \
+    actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.1 \
     algorithm.group_by_agent_id=$group_by_agent_id \
     env.env_name=math \
     env.seed=0 \
     env.rollout.n=$group_size \
+    env.rollout.val_n=$val_group_size \
     agent.agent_ids="$agent_ids" \
     agent.model_ids="$model_ids" \
     agent.model_sharing=$model_sharing \
