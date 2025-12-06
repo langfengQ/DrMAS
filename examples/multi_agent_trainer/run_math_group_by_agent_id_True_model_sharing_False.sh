@@ -8,6 +8,7 @@ if [ "$MODE" == "eval" ] || [ "$MODE" == "evaluation" ]; then
     VAL_DATA="$HOME/data/drmas_math/test.parquet" # Full test dataset
     train_data_size=32
     val_data_size=512
+    val_group_size=16  # For pass@16 and avg@16 computation during evaluation
 else
     echo "Running in training mode"
     VAL_ONLY=False
