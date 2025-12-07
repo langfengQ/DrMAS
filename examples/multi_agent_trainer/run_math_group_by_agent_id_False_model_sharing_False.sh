@@ -7,7 +7,7 @@ if [ "$MODE" == "eval" ] || [ "$MODE" == "evaluation" ]; then
     TRAIN_DATA="$HOME/data/drmas_math/train.parquet"
     VAL_DATA="$HOME/data/drmas_math/test.parquet" # Full test dataset
     train_data_size=32
-    val_data_size=512
+    val_data_size=64
     val_group_size=16  # For pass@16 and avg@16 computation during evaluation
 else
     echo "Running in training mode"
@@ -112,7 +112,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
