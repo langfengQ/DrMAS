@@ -310,10 +310,22 @@ def adjust_batch(config, data: DataProto, wg_id: str, mode="copy") -> DataProto:
             del data
         elif mode == "copy":
             to_add = size_divisor - remainder
-            dup_indices = np.random.choice(bs, to_add, replace=False)
-            dup_proto = data.select_idxs(dup_indices)
-
-            adjusted_batch = DataProto.concat([data, dup_proto])
+            # If to_add > bs, we need to copy multiple times
+            dup_protos = []
+            remaining = to_add
+            while remaining > 0:
+                if remaining >= bs:
+                    # Copy the entire batch
+                    dup_protos.append(data)
+                    remaining -= bs
+                    print(f"Copy the entire batch, remaining: {remaining}")
+                else:
+                    # Copy a subset
+                    dup_indices = np.random.choice(bs, remaining, replace=False)
+                    dup_protos.append(data.select_idxs(dup_indices))
+                    remaining = 0
+            
+            adjusted_batch = DataProto.concat([data] + dup_protos)
         else:
             raise ValueError(f"Unsupported mode: {mode}")
 

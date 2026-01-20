@@ -21,11 +21,11 @@ fi
 
 ###################### Algorithm Configurations #################
 algorithm=grpo
-group_by_agent_id=True
+group_by_agent_id=False
 
 ##################### Agent Configurations #####################
 agent_ids='["Solver Agent","Verifier Agent"]'
-model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
+model_ids='["Qwen/Qwen3-8B","Qwen/Qwen3-8B"]'
 model_sharing=True
 
 orchestra_type=math
@@ -72,7 +72,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.entropy_coeff=0.0 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
@@ -99,9 +99,9 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_math' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=2 \
+    trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=20 \
+    trainer.save_freq=25 \
     trainer.test_freq=10 \
     trainer.total_epochs=2 \
     trainer.val_only=$VAL_ONLY \
