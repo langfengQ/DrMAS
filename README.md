@@ -100,6 +100,7 @@ A core assignment logic maps logical agents $(1, ..., K)$ to physical LLM worker
 conda create -n DrMAS python==3.12 -y
 conda activate DrMAS
 
+pip3 install psutil
 pip3 install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 pip3 install flash-attn==2.7.4.post1 --no-build-isolation
 
