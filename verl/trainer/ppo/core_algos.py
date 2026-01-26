@@ -118,6 +118,7 @@ def compute_grpo_outcome_advantage(
     epsilon: float = 1e-6,
     norm_adv_by_std_in_grpo: bool = True,
     group_by_agent_id: bool = False,
+    adv_estimator: str = "agent_traj",
 ):
     """
     Compute advantage for GRPO, operating only on Outcome reward
@@ -134,6 +135,13 @@ def compute_grpo_outcome_advantage(
         group_by_agent_id: bool
             If True, the mean and std are computed across agent group.
             If False (i.e., standard episode-level adv), the mean and std are computed across trajectories within one group.
+        adv_estimator: str
+            Controls which combination of mean and std to use for advantage computation:
+            - "auto": use group_by_agent_id to determine (backward compatible)
+            - "agent_agent": (id2mean_agent, id2std_agent)
+            - "traj_traj": (id2mean_traj, id2std_traj)
+            - "agent_traj": (id2mean_agent, id2std_traj)
+            - "traj_agent": (id2mean_traj, id2std_agent)
 
     Returns:
         advantages: `(torch.Tensor)`
@@ -142,10 +150,18 @@ def compute_grpo_outcome_advantage(
             shape is (bs, response_length)
     """
     scores = token_level_rewards.sum(dim=-1)
+    print("adv_estimator: ", adv_estimator)
 
-    id2score = defaultdict(list)
-    id2mean = {}
-    id2std = {}
+    # For group_by_agent_id=True: scores are grouped by agent (idx)
+    id2score_agent = defaultdict(list)
+    id2mean_agent = {}
+    id2std_agent = {}
+    
+    # For group_by_agent_id=False: scores are grouped by trajectory average
+    id2score_traj = defaultdict(list)
+    id2mean_traj = {}
+    id2std_traj = {}
+
     traj_accumulator = defaultdict(list)
     traj2avg = {}
     with torch.no_grad():
@@ -153,27 +169,73 @@ def compute_grpo_outcome_advantage(
         for i in range(bsz):
             traj_accumulator[(index[i], traj_index[i])].append(scores[i])
         
+        # Compute both agent-level and trajectory-level score aggregations
         for (idx, t_idx), reward_list in traj_accumulator.items():
-            if group_by_agent_id:
-                id2score[idx].extend(reward_list)
+            # For agent-level grouping: extend with all individual scores
+            id2score_agent[idx].extend(reward_list)
+            # For trajectory-level grouping: append trajectory average
+            avg_score = torch.stack(reward_list).mean()
+            traj2avg[(idx, t_idx)] = avg_score
+            id2score_traj[idx].append(avg_score)
+        
+        # Compute mean and std for agent-level grouping (group_by_agent_id=True)
+        for idx in id2score_agent:
+            if len(id2score_agent[idx]) == 1:
+                id2mean_agent[idx] = torch.tensor(0.0)
+                id2std_agent[idx] = torch.tensor(1.0)
+            elif len(id2score_agent[idx]) > 1:
+                scores_tensor = torch.stack(id2score_agent[idx])
+                id2mean_agent[idx] = torch.mean(scores_tensor)
+                id2std_agent[idx] = torch.std(scores_tensor)
             else:
-                avg_score = torch.stack(reward_list).mean()
-                traj2avg[(idx, t_idx)] = avg_score
-                id2score[idx].append(avg_score)
-        if not group_by_agent_id:
+                raise ValueError(f"no score in prompt index (agent): {idx}")
+        
+        # Compute mean and std for trajectory-level grouping (group_by_agent_id=False)
+        for idx in id2score_traj:
+            if len(id2score_traj[idx]) == 1:
+                id2mean_traj[idx] = torch.tensor(0.0)
+                id2std_traj[idx] = torch.tensor(1.0)
+            elif len(id2score_traj[idx]) > 1:
+                scores_tensor = torch.stack(id2score_traj[idx])
+                id2mean_traj[idx] = torch.mean(scores_tensor)
+                id2std_traj[idx] = torch.std(scores_tensor)
+            else:
+                raise ValueError(f"no score in prompt index (traj): {idx}")
+        
+        # Select which mean/std to use based on adv_estimator or group_by_agent_id
+        if adv_estimator == "auto":
+            # Backward compatible: use group_by_agent_id to determine
+            if group_by_agent_id:
+                id2mean = id2mean_agent
+                id2std = id2std_agent
+            else:
+                id2mean = id2mean_traj
+                id2std = id2std_traj
+                # Replace scores with trajectory averages for trajectory-level grouping
+                for i in range(bsz):
+                    scores[i] = traj2avg[(index[i], traj_index[i])]
+        elif adv_estimator == "agent_agent":
+            id2mean = id2mean_agent
+            id2std = id2std_agent
+        elif adv_estimator == "traj_traj":
+            id2mean = id2mean_traj
+            id2std = id2std_traj
+            # Replace scores with trajectory averages for trajectory-level mean
             for i in range(bsz):
                 scores[i] = traj2avg[(index[i], traj_index[i])]
-
-        for idx in id2score:
-            if len(id2score[idx]) == 1:
-                id2mean[idx] = torch.tensor(0.0)
-                id2std[idx] = torch.tensor(1.0)
-            elif len(id2score[idx]) > 1:
-                scores_tensor = torch.stack(id2score[idx])
-                id2mean[idx] = torch.mean(scores_tensor)
-                id2std[idx] = torch.std(scores_tensor)
-            else:
-                raise ValueError(f"no score in prompt index: {idx}")
+        elif adv_estimator == "agent_traj":
+            id2mean = id2mean_agent
+            id2std = id2std_traj
+        elif adv_estimator == "traj_agent":
+            id2mean = id2mean_traj
+            id2std = id2std_agent
+            # Replace scores with trajectory averages for trajectory-level mean
+            for i in range(bsz):
+                scores[i] = traj2avg[(index[i], traj_index[i])]
+        else:
+            raise ValueError(f"Unknown adv_estimator: {adv_estimator}. "
+                           f"Valid options: 'auto', 'agent_agent', 'traj_traj', 'agent_traj', 'traj_agent'")
+        
         for i in range(bsz):
             if norm_adv_by_std_in_grpo:
                 scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
