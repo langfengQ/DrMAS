@@ -116,7 +116,7 @@ def compute_grpo_outcome_advantage(
     index: np.ndarray,
     traj_index: np.ndarray,
     epsilon: float = 1e-6,
-    norm_adv_by_std_in_grpo: str = True,
+    norm_adv_by_std_in_grpo: bool = True,
     group_by_agent_id: bool = False,
 ):
     """
@@ -146,22 +146,32 @@ def compute_grpo_outcome_advantage(
     id2score = defaultdict(list)
     id2mean = {}
     id2std = {}
-    seen_pairs = set()
+    traj_accumulator = defaultdict(list)
+    traj2avg = {}
     with torch.no_grad():
         bsz = scores.shape[0]
         for i in range(bsz):
-            if (index[i], traj_index[i]) in seen_pairs:
-                continue
-            id2score[index[i]].append(scores[i])
-            if not group_by_agent_id:
-                seen_pairs.add((index[i], traj_index[i]))
+            traj_accumulator[(index[i], traj_index[i])].append(scores[i])
+        
+        for (idx, t_idx), reward_list in traj_accumulator.items():
+            if group_by_agent_id:
+                id2score[idx].extend(reward_list)
+            else:
+                avg_score = torch.stack(reward_list).mean()
+                traj2avg[(idx, t_idx)] = avg_score
+                id2score[idx].append(avg_score)
+        if not group_by_agent_id:
+            for i in range(bsz):
+                scores[i] = traj2avg[(index[i], traj_index[i])]
+
         for idx in id2score:
             if len(id2score[idx]) == 1:
                 id2mean[idx] = torch.tensor(0.0)
                 id2std[idx] = torch.tensor(1.0)
             elif len(id2score[idx]) > 1:
-                id2mean[idx] = torch.mean(torch.tensor(id2score[idx]))
-                id2std[idx] = torch.std(torch.tensor([id2score[idx]]))
+                scores_tensor = torch.stack(id2score[idx])
+                id2mean[idx] = torch.mean(scores_tensor)
+                id2std[idx] = torch.std(scores_tensor)
             else:
                 raise ValueError(f"no score in prompt index: {idx}")
         for i in range(bsz):
