@@ -12,4 +12,4 @@ python examples/search/retriever/retrieval_server.py \
   --retriever_name $retriever_name \
   --retriever_model $retriever_path \
   --faiss_gpu \
-  --port 7856 \
+  --port 8000 \

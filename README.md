@@ -45,8 +45,8 @@ Unlike single-agent approaches, `Dr.MAS` supports sophisticated multi-agent setu
   - [Install veRL](#install-verl)
   - [Install Supported Environments](#install-supported-environments)
 - [Run Examples](#run-examples)
-  - [Math](#math)
   - [Search](#search)
+  - [Math](#math)
 - [Usage Guide](#usage-guide)
   - [How to register Custom Agents](#how-to-register-custom-agents)
   - [How to Create Custom Orchestras](#how-to-create-custom-orchestras)
@@ -100,25 +100,17 @@ A core assignment logic maps logical agents $(1, ..., K)$ to physical LLM worker
 conda create -n DrMAS python==3.12 -y
 conda activate DrMAS
 
-pip3 install psutil
-pip3 install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
-pip3 install flash-attn==2.7.4.post1 --no-build-isolation
+# pip3 install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
+pip3 install -r requirements_sglang.txt
+pip3 install flash-attn==2.7.4.post1 --no-build-isolation --no-cache-dir
 
 pip3 install -e .
-pip3 install -r requirements_sglang.txt
 ```
 
 ## Install Supported Environments
 
-### 1. Math
-Prepare the dataset:
-```bash
-cd repo_root/
-python examples/data_preprocess/drmas_math.py
-```
 
-
-### 2. Search
+### 1. Search
 ```bash
 conda activate DrMAS
 cd ./agent_system/environments/env_package/search/third_party
@@ -171,6 +163,14 @@ conda activate retriever
 # we have observed outputting to the terminal causing spikes in server response times
 bash examples/search/retriever/retrieval_launch.sh > retrieval_server.log 
 ```
+
+### 2. Math
+Prepare the dataset:
+```bash
+cd repo_root/
+python examples/data_preprocess/drmas_math.py
+```
+
 
 # Run Examples
 

@@ -21,12 +21,12 @@ fi
 
 ###################### Algorithm Configurations #################
 algorithm=grpo
-group_by_agent_id=False
+group_by_agent_id=True
 
 ##################### Agent Configurations #####################
 agent_ids='["Solver Agent","Verifier Agent"]'
-model_ids='["Qwen/Qwen3-8B","Qwen/Qwen3-8B"]'
-model_sharing=True
+model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
+model_sharing=False
 
 orchestra_type=math
 max_loop_num=2
@@ -101,7 +101,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name="$experiment_name" \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=25 \
+    trainer.save_freq=100 \
     trainer.test_freq=10 \
     trainer.total_epochs=2 \
     trainer.val_only=$VAL_ONLY \

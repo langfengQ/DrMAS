@@ -26,8 +26,8 @@ group_by_agent_id=True
 
 ##################### Agent Configurations #####################
 agent_ids='["Verifier Agent","Search Agent","Answer Agent"]'
-model_ids='["Qwen/Qwen2.5-3B","Qwen/Qwen2.5-3B","Qwen/Qwen2.5-3B"]'
-model_sharing=True
+model_ids='["Qwen/Qwen2.5-7B","Qwen/Qwen2.5-7B","Qwen/Qwen2.5-7B"]'
+model_sharing=False
 
 orchestra_type=search
 
@@ -78,7 +78,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
@@ -90,7 +90,7 @@ python3 -m verl.trainer.main_ppo \
     algorithm.group_by_agent_id=$group_by_agent_id \
     env.env_name=search \
     env.seed=0 \
-    env.search.search_url='http://127.0.0.1:7856/retrieve' \
+    env.search.search_url='http://127.0.0.1:8000/retrieve' \
     env.max_steps=$max_turn \
     env.rollout.n=$group_size \
     env.rollout.val_n=$val_group_size \
@@ -105,8 +105,8 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name="$experiment_name" \
     trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
-    trainer.save_freq=50 \
-    trainer.test_freq=10 \
+    trainer.save_freq=100 \
+    trainer.test_freq=5 \
     trainer.total_epochs=1 \
     trainer.val_only=$VAL_ONLY \
     trainer.val_before_train=True
