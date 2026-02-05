@@ -38,7 +38,7 @@ install_requires = [
     "ray[default]>=2.41.0,<=2.50.0",
     "torchdata",
     "tensordict>=0.8.0,<=0.10.0,!=0.9.0",
-    "transformers>=4.53.1,<=4.57.3",
+    "transformers>=4.52.1,<=4.53.2",
     "wandb",
     "packaging>=20.0",
     "qwen-vl-utils[decord]",
