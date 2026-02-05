@@ -20,13 +20,9 @@ else
 fi
 
 ###################### Algorithm Configurations #################
-algorithm=gigpo
+algorithm=grpo
 group_size=5
 group_by_agent_id=True # enable Dr. MAS
-
-mode="mean_std_norm" # "mean_norm" or "mean_std_norm"
-enable_similarity=True # enable similarity-based GiGPO
-similarity_thresh=0.9 # similarity threshold for GiGPO
 
 ##################### Agent Configurations #####################
 agent_ids='["Verifier Agent","Search Agent","Answer Agent"]'
@@ -40,11 +36,9 @@ max_turn=4
 actor_optim_lr='[1e-6,1e-6,1e-6]'
 actor_ppo_micro_batch_size_per_gpu='[4,4,4]'
 
-####################### Other Configurations #####################
-
 model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
 
-experiment_name="gigpo_share${model_sharing}_${model_name_tag}"
+experiment_name="drmas_share${model_sharing}_${model_name_tag}"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
@@ -82,11 +76,6 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
     algorithm.group_by_agent_id=$group_by_agent_id \
-    algorithm.gamma=0.95 \
-    algorithm.gigpo.step_advantage_w=1.0 \
-    algorithm.gigpo.mode=$mode \
-    algorithm.gigpo.enable_similarity=$enable_similarity \
-    algorithm.gigpo.similarity_thresh=$similarity_thresh \
     env.env_name=search \
     env.seed=0 \
     env.search.search_url='http://127.0.0.1:8000/retrieve' \

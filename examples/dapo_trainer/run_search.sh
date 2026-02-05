@@ -20,13 +20,14 @@ else
 fi
 
 ###################### Algorithm Configurations #################
-algorithm=gigpo
+algorithm=grpo
 group_size=5
-group_by_agent_id=True # enable Dr. MAS
 
-mode="mean_std_norm" # "mean_norm" or "mean_std_norm"
-enable_similarity=True # enable similarity-based GiGPO
-similarity_thresh=0.9 # similarity threshold for GiGPO
+# DAPO-specific configurations
+clip_ratio_low=0.2
+clip_ratio_high=0.28
+enable_filter_groups=True
+max_num_gen_batches=10
 
 ##################### Agent Configurations #####################
 agent_ids='["Verifier Agent","Search Agent","Answer Agent"]'
@@ -44,7 +45,7 @@ actor_ppo_micro_batch_size_per_gpu='[4,4,4]'
 
 model_name_tag=$(jq -r '.[]' <<< "$model_ids"  | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
 
-experiment_name="gigpo_share${model_sharing}_${model_name_tag}"
+experiment_name="dapo_share${model_sharing}_${model_name_tag}"
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
@@ -65,7 +66,11 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.ppo_mini_update_num=5 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=null \
     +agent.agent_specific_parameters.actor.ppo_micro_batch_size_per_gpu=$actor_ppo_micro_batch_size_per_gpu \
-    actor_rollout_ref.actor.use_kl_loss=False \
+    actor_rollout_ref.actor.use_kl_loss=True \
+    actor_rollout_ref.actor.kl_loss_coef=0.01 \
+    actor_rollout_ref.actor.kl_loss_type=low_var_kl \
+    actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
+    actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
@@ -79,14 +84,12 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.95 \
     actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
+    actor_rollout_ref.ref.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
     actor_rollout_ref.actor.invalid_action_penalty_coef=0.01 \
-    algorithm.group_by_agent_id=$group_by_agent_id \
-    algorithm.gamma=0.95 \
-    algorithm.gigpo.step_advantage_w=1.0 \
-    algorithm.gigpo.mode=$mode \
-    algorithm.gigpo.enable_similarity=$enable_similarity \
-    algorithm.gigpo.similarity_thresh=$similarity_thresh \
+    algorithm.filter_groups.enable=${enable_filter_groups} \
+    algorithm.filter_groups.max_num_gen_batches=${max_num_gen_batches} \
     env.env_name=search \
     env.seed=0 \
     env.search.search_url='http://127.0.0.1:8000/retrieve' \
