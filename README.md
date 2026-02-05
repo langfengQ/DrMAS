@@ -1,6 +1,10 @@
-<p align="center">
+<!-- <p align="center">
     <img src="./docs/drmas/drmas_logo.png" alt="logo" width="25%">
-</p>
+</p> -->
+
+<h1 align="center">
+Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems</b>
+</h1>
 
 
 <p align="center">
@@ -17,23 +21,23 @@
     <img src="https://img.shields.io/badge/Twitter-Channel-000000?style=flat-square&logo=x" alt="X Channel"></a>
 </p>
 
-`Dr.MAS` is designed for training **Multi-Agent LLM Systems** via **Reinforcement Learning (RL)**, supporting both homogeneous (shared-LLM) and heterogeneous (non-shared, multi-LLM) agent configurations.
+`Dr.MAS` is designed for training **Multi-Agent LLM Systems** via **Reinforcement Learning (RL)**, supporting sophisticated multi-agent setups where specialized LLM-based agents collaborate to tackle complex reasoning and decision-making tasks. 
 
-Unlike single-agent approaches, `Dr.MAS` supports sophisticated multi-agent setups where specialized LLM-based agents collaborate to tackle complex reasoning and decision-making tasks. The framework features **flexible agent registry**, **customizable multi-agent orchestration**, **model sharing/non-sharing (e.g., heterogeneous LLMs)**, **per-agent configuration**, and **shared resource pooling**, making it well suited for training multi-agent LLM systems with RL.
+This framework features **flexible agent registry**, **customizable multi-agent orchestration**, **LLM sharing/non-sharing (e.g., heterogeneous LLMs)**, **per-agent configuration**, and **shared resource pooling**, making it well suited for training multi-agent LLM systems with RL.
 
 <p align="center">
     <img src="./docs/drmas/drmas_framework.png" alt="framework" width="100%">
 </p>
 
-# Quick Feature Summary
+# Feature Summary
 
 | Feature Category | Supported Capabilities|
 | - | - |
-| **Flexible Agent Registry** | ✅ Decorator-based agent registration (`@AgentRegistry.register`)<br>✅ Clear role specialization per agent<br>✅ Easy agent composition and management |
-| **Multi-Agent Orchestration** | ✅ User-defined orchestration via `BaseOrchestra`<br>✅ Sequential, hierarchical, and conditional decision flows<br>✅ Built-in Search Orchestra (Verifier → Search/Answer)<br>✅ Built-in Math Orchestra (Solver ↔ Verifier loop) |
-| **Agent-Model Assignment** | ✅ Logical agents \((1, ..., K)\) mapped to physical LLM worker groups (see [`verl/trainer/config/ppo_trainer.yaml#L296`](./verl/trainer/config/ppo_trainer.yaml#L296))<br>✅ **Non-sharing**: each agent uses its own LLM (supports heterogeneous model families/sizes/checkpoints)<br>✅ **Sharing**: agents using the same model share one LLM worker group |
-| **Per-Agent Configuration** | ✅ Per-agent learning rates, PPO micro-batch sizes, and other hyperparameters<br>✅ Shared-model agents undergo consistency checks to avoid conflicting configurations<br>✅ Per-agent training overrides for fine-grained control |
-| **Shared Resource Pooling** | ✅ Shared GPU pool across multiple LLM worker groups for efficient hardware utilization<br>✅ SGLang for high-throughput, low-latency inference<br>✅ Gradient updates applied independently for each worker group during optimization |
+| **Flexible Agent Registry** | ✅ User-defined agent registration via `@AgentRegistry.register`<br>✅ Clear role specialization per agent<br> |
+| **Multi-Agent Orchestration** | ✅ User-defined multi-agent orchestration<br>✅ Sequential, hierarchical, and conditional workflows<br>✅ Built-in Search/Math Orchestra |
+| **Agent-Model Assignment** | ✅ Logical agents (1,...,K) mapped to LLM worker groups<br>✅ **LLM non-sharing**: one LLM per agent (supports heterogeneous model families/checkpoints)<br>✅ **LLM Sharing**: agents using the same model share one LLM worker group |
+| **Per-Agent Configuration** | ✅ Per-agent training overrides for fine-grained control <br>✅ Per-agent learning rates, micro-batch sizes, and other hyperparameters|
+| **Shared Resource Pooling** | ✅ Shared GPU pool across multiple LLM worker groups for efficient hardware utilization<br>✅ Gradient updates applied independently for each worker group during optimization |
 | **Environments**         | ✅ Math<br>✅ Search |
 | **Model Support**        | ✅ Qwen2.5<br>✅ Qwen3<br>✅ LLaMA3.2<br>and more |
 | **RL Algorithms**        | ✅ Dr.MAS<br>✅ GRPO<br>🧪 GiGPO (experimental)<br>🧪 DAPO (experimental) <br>🧪 RLOO (experimental) <br>🧪 PPO (experimental) <br>and more |
@@ -47,9 +51,6 @@ Unlike single-agent approaches, `Dr.MAS` supports sophisticated multi-agent setu
   - [Search](#search)
   - [Math](#math)
 - [Usage Guide](#usage-guide)
-  - [Quick Start: Register Custom Agents](#quick-start-register-custom-agents)
-  - [Quick Start: Create Custom Orchestras](#quick-start-create-custom-orchestras)
-  - [Agent Configuration](#agent-configuration)
 - [Acknowledgement](#acknowledgement)
 
 # Installation
@@ -86,21 +87,13 @@ python examples/data_preprocess/drmas_search.py
 
 Since faiss-gpu is not available via pip, we setup a separate conda environment for the local retrieval server. Running this server will use around 6GB of GPU memory per GPU, so make sure to account for this in your training run configuration. Build Retriever environments:
 ```bash
-# Create and activate the retriever environment with Python 3.10
 conda create -n retriever python=3.10 -y
 conda activate retriever
 
-# Install PyTorch (with GPU support) and related libraries
 conda install numpy==1.26.4
 pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
-
-# Install other Python packages
 pip install transformers datasets pyserini huggingface_hub
-
-# Install the GPU version of faiss
 conda install faiss-gpu==1.8.0 -c pytorch -c nvidia -y
-
-# Install the API service framework
 pip install uvicorn fastapi
 ```
 
