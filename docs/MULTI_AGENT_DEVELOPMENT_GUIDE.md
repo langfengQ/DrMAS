@@ -1,6 +1,6 @@
 # Multi-Agent LLM Systems Development Guide
 
-This guide provides comprehensive instructions for developing custom multi-agent LLM systems using the Dr.MAS framework. It covers agent registration, orchestra orchestration, configuration, and integration with the training pipeline.
+This guide provides comprehensive instructions for developing custom multi-agent LLM systems using the Dr.MAS framework. It covers agent registration, orchestration, configuration, and integration with the training pipeline.
 
 ## Table of Contents
 
@@ -15,11 +15,10 @@ This guide provides comprehensive instructions for developing custom multi-agent
   - [Step 1: Understanding the Base Orchestra](#step-1-understanding-the-base-orchestra)
   - [Step 2: Creating a New Orchestra](#step-2-creating-a-new-orchestra)
   - [Step 3: Registering the Orchestra](#step-3-registering-the-orchestra)
-  - [Step 4: Orchestra Patterns](#step-4-orchestra-patterns)
 - [Configuration Guide](#configuration-guide)
   - [Agent Configuration](#agent-configuration)
+  - [Model Sharing](#model-sharing)
   - [Per-Agent Parameter Overrides](#per-agent-parameter-overrides)
-  - [Orchestra Configuration](#orchestra-configuration)
 - [Running Your Multi-Agent System](#running-your-multi-agent-system)
 - [Summary](#summary)
 
@@ -31,14 +30,14 @@ Dr.MAS follows a modular architecture for multi-agent LLM systems:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Training Pipeline                         │
+│                        Training Pipeline                        │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │              MultiAgentTrajectoryCollector                │   │
+│  │              MultiAgentTrajectoryCollector               │   │
 │  │  ┌────────────────────────────────────────────────────┐  │   │
-│  │  │                    Orchestra                        │  │   │
-│  │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐         │  │   │
-│  │  │  │ Agent 1  │  │ Agent 2  │  │ Agent N  │  ...    │  │   │
-│  │  │  └──────────┘  └──────────┘  └──────────┘         │  │   │
+│  │  │                    Orchestra                       │  │   │
+│  │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │  │   │
+│  │  │  │ Agent 1  │  │ Agent 2  │  │ Agent N  │  ...     │  │   │
+│  │  │  └──────────┘  └──────────┘  └──────────┘          │  │   │
 │  │  │        │              │              │             │  │   │
 │  │  │        └──────────────┼──────────────┘             │  │   │
 │  │  │                       ▼                            │  │   │
@@ -46,9 +45,9 @@ Dr.MAS follows a modular architecture for multi-agent LLM systems:
 │  │  │       (Shared or Dedicated per Agent)              │  │   │
 │  │  └────────────────────────────────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────┘   │
-│                              │                                   │
-│                              ▼                                   │
-│                        Environment                               │
+│                              │                                  │
+│                              ▼                                  │
+│                        Environment                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -174,36 +173,16 @@ Create a new agent by:
 Here's a complete example:
 
 ```python
-# agent_system/agent/agents/my_domain/planner_agent.py
-
-from typing import Dict, Any, List, Tuple
-from verl import DataProto
-from transformers import PreTrainedTokenizer
-from agent_system.multi_turn_rollout.utils import preprocess_batch
-from agent_system.agent.registry import AgentRegistry
-from agent_system.agent.agents.base import BaseAgent
-from agent_system.agent.utils import general_projection
-import numpy as np
-
+# agent_system/agent/agents/my_domain/my_agent.py
 
 # Define the agent's prompt template
-PLANNER_PROMPT = """
-# Task Introduction
-{env_prompt}
-
-# Your Teammates' Outputs at Step {step}
-{team_context}
-
-# Your Role
-You are a "Planner Agent". Your responsibility is to analyze the task and create a step-by-step plan to accomplish the goal.
-
-Before creating your plan, reason about the problem within <think>...</think> tags.
-Then provide your final plan within <plan>...</plan> tags.
+MY_PROMPT = """
+...
 """
 
 
-@AgentRegistry.register("Planner Agent")
-class PlannerAgent(BaseAgent):
+@AgentRegistry.register("My Agent")
+class MyAgent(BaseAgent):
     """Agent that creates step-by-step plans for task completion."""
     
     def __init__(
@@ -214,16 +193,13 @@ class PlannerAgent(BaseAgent):
         config: Any
     ):
         super().__init__(
-            name="Planner Agent",
-            prompt=PLANNER_PROMPT,
+            name="My Agent",
+            prompt=MY_PROMPT,
             wg_id=wg_id,
             tokenizer=tokenizer,
             processor=processor,
             config=config
         )
-        # Define output parsing tags
-        self.start_tag = "<plan>"
-        self.end_tag = "</plan>"
     
     def call(
         self,
@@ -282,12 +258,10 @@ Create an `__init__.py` file in your agent module directory:
 ```python
 # agent_system/agent/agents/my_domain/__init__.py
 
-from .planner_agent import PlannerAgent
-from .executor_agent import ExecutorAgent  # Add other agents
+from .my_agent import MyAgent
 
 __all__ = [
-    "PlannerAgent",
-    "ExecutorAgent",
+    "MyAgent",
 ]
 ```
 
@@ -388,47 +362,6 @@ Create a new orchestra by inheriting from `BaseOrchestra`:
 
 ```python
 # agent_system/agent/orchestra/my_domain/my_orchestra.py
-
-from __future__ import annotations
-from typing import List, Dict, Any, Tuple
-from transformers import PreTrainedTokenizer
-from agent_system.agent.orchestra.base import BaseOrchestra
-import importlib
-from verl import DataProto
-import numpy as np
-
-
-def update_team_context(
-    agent_id: str, 
-    team_context: List[str], 
-    text_response: List[str], 
-    agent_active_mask: np.ndarray = None
-) -> List[str]:
-    """Update team context with agent responses."""
-    if agent_active_mask is None:
-        agent_active_mask = np.ones(len(team_context), dtype=bool)
-    
-    for i in range(len(team_context)):
-        if agent_active_mask[i]:
-            team_context[i] += f'\nThe output of "{agent_id}": {text_response[i]}\n'
-    return team_context
-
-
-def update_text_action(
-    text_actions: List[str], 
-    text_response: List[str], 
-    agent_active_mask: np.ndarray = None
-) -> List[str]:
-    """Update text actions with latest response."""
-    if agent_active_mask is None:
-        agent_active_mask = np.ones(len(text_actions), dtype=bool)
-    
-    for i in range(len(text_actions)):
-        if agent_active_mask[i]:
-            text_actions[i] = text_response[i]
-    return text_actions
-
-
 class MyMultiAgentOrchestra(BaseOrchestra):
     """
     Custom multi-agent orchestra implementing [describe your pattern].
@@ -443,9 +376,9 @@ class MyMultiAgentOrchestra(BaseOrchestra):
     """
     
     # Define agent name constants
-    PLANNER_AGENT = "Planner Agent"
-    EXECUTOR_AGENT = "Executor Agent"
-    REVIEWER_AGENT = "Reviewer Agent"
+    AGENT_1 = "Agent 1"
+    AGENT_2 = "Agent 2"
+    AGENT_3 = "Agent 3"
     
     def __init__(
         self,
@@ -470,10 +403,10 @@ class MyMultiAgentOrchestra(BaseOrchestra):
         )
         
         # Validate required agents
-        if self.PLANNER_AGENT not in self.agent_ids:
-            raise ValueError(f"{self.PLANNER_AGENT} is required.")
-        if self.EXECUTOR_AGENT not in self.agent_ids:
-            raise ValueError(f"{self.EXECUTOR_AGENT} is required.")
+        if self.AGENT_1 not in self.agent_ids:
+            raise ValueError(f"{self.AGENT_1} is required.")
+        if self.AGENT_2 not in self.agent_ids:
+            raise ValueError(f"{self.AGENT_2} is required.")
         
         # Load orchestra-specific configuration
         self.max_iterations = getattr(
@@ -507,13 +440,13 @@ class MyMultiAgentOrchestra(BaseOrchestra):
             active_masks
         ).astype(bool)
         
-        # ===== STEP 1: Run Planner Agent =====
-        if self.PLANNER_AGENT in self.agents:
+        # ===== STEP 1: Run Agent 1 =====
+        if self.AGENT_1 in self.agents:
             actor_rollout_wg = actor_rollout_wgs[
-                self.agents_to_wg_mapping[self.PLANNER_AGENT]
+                self.agents_to_wg_mapping[self.AGENT_1]
             ]
             
-            batch, text_responses = self.agents[self.PLANNER_AGENT].call(
+            batch, text_responses = self.agents[self.AGENT_1].call(
                 gen_batch=gen_batch,
                 env_obs=env_obs,
                 team_context=team_context,
@@ -522,24 +455,24 @@ class MyMultiAgentOrchestra(BaseOrchestra):
                 step=step,
             )
             
-            # Update team context with planner output
+            # Update team context with agent 1 output
             team_context = update_team_context(
-                self.PLANNER_AGENT, 
+                self.AGENT_1, 
                 team_context, 
                 text_responses, 
                 agent_active_mask
             )
             
             # Save to buffer for training
-            self.save_to_buffer(self.PLANNER_AGENT, batch)
+            self.save_to_buffer(self.AGENT_1, batch)
         
-        # ===== STEP 2: Run Executor Agent =====
-        if self.EXECUTOR_AGENT in self.agents:
+        # ===== STEP 2: Run Agent 2 =====
+        if self.AGENT_2 in self.agents:
             actor_rollout_wg = actor_rollout_wgs[
-                self.agents_to_wg_mapping[self.EXECUTOR_AGENT]
+                self.agents_to_wg_mapping[self.AGENT_2]
             ]
             
-            batch, text_responses = self.agents[self.EXECUTOR_AGENT].call(
+            batch, text_responses = self.agents[self.AGENT_2].call(
                 gen_batch=gen_batch,
                 env_obs=env_obs,
                 team_context=team_context,
@@ -549,27 +482,27 @@ class MyMultiAgentOrchestra(BaseOrchestra):
             )
             
             team_context = update_team_context(
-                self.EXECUTOR_AGENT, 
+                self.AGENT_2, 
                 team_context, 
                 text_responses, 
                 agent_active_mask
             )
-            self.save_to_buffer(self.EXECUTOR_AGENT, batch)
+            self.save_to_buffer(self.AGENT_2, batch)
             
-            # Update final actions with executor output
+            # Update final actions with agent 2 output
             text_actions = update_text_action(
                 text_actions, 
                 text_responses, 
                 agent_active_mask
             )
         
-        # ===== STEP 3: Optional Reviewer Agent =====
-        if self.REVIEWER_AGENT in self.agents:
+        # ===== STEP 3: Optional Agent 3 =====
+        if self.AGENT_3 in self.agents:
             actor_rollout_wg = actor_rollout_wgs[
-                self.agents_to_wg_mapping[self.REVIEWER_AGENT]
+                self.agents_to_wg_mapping[self.AGENT_3]
             ]
             
-            batch, text_responses = self.agents[self.REVIEWER_AGENT].call(
+            batch, text_responses = self.agents[self.AGENT_3].call(
                 gen_batch=gen_batch,
                 env_obs=env_obs,
                 team_context=team_context,
@@ -579,12 +512,12 @@ class MyMultiAgentOrchestra(BaseOrchestra):
             )
             
             team_context = update_team_context(
-                self.REVIEWER_AGENT, 
+                self.AGENT_3, 
                 team_context, 
                 text_responses, 
                 agent_active_mask
             )
-            self.save_to_buffer(self.REVIEWER_AGENT, batch)
+            self.save_to_buffer(self.AGENT_3, batch)
         
         return text_actions, self.multiagent_batch_buffer
 ```
@@ -618,142 +551,6 @@ else:
     raise ValueError(f"Unknown orchestra_type '{orchestra_type}'.")
 ```
 
-### Step 4: Orchestra Patterns
-
-#### Pattern 1: Sequential Chain
-
-Agents execute in a fixed sequence, each receiving outputs from previous agents:
-
-```
-Agent 1 → Agent 2 → Agent 3 → ... → Output
-```
-
-```python
-def run(self, gen_batch, env_obs, actor_rollout_wgs, active_masks, step):
-    self.reset_buffer()
-    text_actions, team_context, env_obs = self.initialize_context(env_obs)
-    agent_active_mask = active_masks.astype(bool)
-    
-    for agent_name in self.agent_order:
-        wg = actor_rollout_wgs[self.agents_to_wg_mapping[agent_name]]
-        batch, responses = self.agents[agent_name].call(
-            gen_batch, env_obs, team_context, wg, agent_active_mask, step
-        )
-        team_context = update_team_context(agent_name, team_context, responses, agent_active_mask)
-        self.save_to_buffer(agent_name, batch)
-        text_actions = update_text_action(text_actions, responses, agent_active_mask)
-    
-    return text_actions, self.multiagent_batch_buffer
-```
-
-#### Pattern 2: Hierarchical Router
-
-A router agent determines which execution agents should run:
-
-```
-Router Agent ─┬─ (condition A) → Agent A
-              ├─ (condition B) → Agent B
-              └─ (condition C) → Agent C
-```
-
-```python
-def run(self, gen_batch, env_obs, actor_rollout_wgs, active_masks, step):
-    self.reset_buffer()
-    text_actions, team_context, env_obs = self.initialize_context(env_obs)
-    agent_active_mask = active_masks.astype(bool)
-    
-    # Step 1: Router Agent
-    wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.ROUTER_AGENT]]
-    batch, responses = self.agents[self.ROUTER_AGENT].call(
-        gen_batch, env_obs, team_context, wg, agent_active_mask, step
-    )
-    team_context = update_team_context(self.ROUTER_AGENT, team_context, responses, agent_active_mask)
-    self.save_to_buffer(self.ROUTER_AGENT, batch)
-    
-    # Get routing decisions
-    route_vector = self.agents[self.ROUTER_AGENT].get_routing_decision(responses, agent_active_mask)
-    
-    # Step 2: Conditionally run execution agents
-    agent_a_mask = np.logical_and(agent_active_mask, route_vector == "A").astype(bool)
-    agent_b_mask = np.logical_and(agent_active_mask, route_vector == "B").astype(bool)
-    
-    if agent_a_mask.any():
-        wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.AGENT_A]]
-        batch, responses = self.agents[self.AGENT_A].call(
-            gen_batch, env_obs, team_context, wg, agent_a_mask, step
-        )
-        team_context = update_team_context(self.AGENT_A, team_context, responses, agent_a_mask)
-        self.save_to_buffer(self.AGENT_A, batch)
-        text_actions = update_text_action(text_actions, responses, agent_a_mask)
-    
-    if agent_b_mask.any():
-        wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.AGENT_B]]
-        batch, responses = self.agents[self.AGENT_B].call(
-            gen_batch, env_obs, team_context, wg, agent_b_mask, step
-        )
-        team_context = update_team_context(self.AGENT_B, team_context, responses, agent_b_mask)
-        self.save_to_buffer(self.AGENT_B, batch)
-        text_actions = update_text_action(text_actions, responses, agent_b_mask)
-    
-    return text_actions, self.multiagent_batch_buffer
-```
-
-#### Pattern 3: Iterative Refinement Loop
-
-Agents iterate until a condition is met:
-
-```
-┌─→ Agent A ─→ Agent B (Validator) ─┬─ (approved) → Exit
-│                                    └─ (rejected) ─┘
-└────────────────────────────────────────────────────┘
-```
-
-```python
-def run(self, gen_batch, env_obs, actor_rollout_wgs, active_masks, step):
-    self.reset_buffer()
-    text_actions, team_context, env_obs = self.initialize_context(env_obs)
-    
-    approved_vector = np.zeros(len(gen_batch), dtype=bool)
-    
-    for loop_i in range(self.max_loop_num):
-        # Run Agent A on not-yet-approved items
-        agent_a_mask = np.logical_and(active_masks, ~approved_vector).astype(bool)
-        
-        if agent_a_mask.any():
-            wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.AGENT_A]]
-            batch, responses = self.agents[self.AGENT_A].call(
-                gen_batch, env_obs, team_context, wg, agent_a_mask, step
-            )
-            team_context = update_team_context(self.AGENT_A, team_context, responses, agent_a_mask)
-            self.save_to_buffer(self.AGENT_A, batch)
-            text_actions = update_text_action(text_actions, responses, agent_a_mask)
-        
-        # Skip validator on last iteration
-        if loop_i == self.max_loop_num - 1:
-            break
-        
-        # Run Validator on not-yet-approved items
-        validator_mask = np.logical_and(active_masks, ~approved_vector).astype(bool)
-        
-        if validator_mask.any():
-            wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.VALIDATOR]]
-            batch, responses = self.agents[self.VALIDATOR].call(
-                gen_batch, env_obs, team_context, wg, validator_mask, step
-            )
-            team_context = update_team_context(self.VALIDATOR, team_context, responses, validator_mask)
-            self.save_to_buffer(self.VALIDATOR, batch)
-            
-            # Update approval status
-            approved_vector = self.agents[self.VALIDATOR].update_approved_vector(
-                responses, approved_vector, validator_mask
-            )
-        
-        if approved_vector.all():
-            break
-    
-    return text_actions, self.multiagent_batch_buffer
-```
-
 ---
 
 ## Configuration Guide
@@ -765,7 +562,7 @@ Configure your multi-agent system in the training script or YAML config:
 ```yaml
 agent:
   multi_agent: True
-  agent_ids: ["Planner Agent", "Executor Agent", "Reviewer Agent"]
+  agent_ids: ["Agent 1", "Agent 2", "Agent 3"]
   model_ids: ["Qwen/Qwen3-4B", "Qwen/Qwen3-4B", "Qwen/Qwen3-4B"]
   model_sharing: False    # False = each agent gets dedicated LLM
   orchestra_type: my_domain
@@ -810,7 +607,7 @@ The list order corresponds to `agent_ids` order. Supported parameters include an
 
 ```bash
 python3 -m verl.trainer.main_ppo \
-    agent.agent_ids='["Planner Agent","Executor Agent"]' \
+    agent.agent_ids='["Agent 1","Agent 2"]' \
     agent.model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B"]' \
     agent.model_sharing=False \
     agent.orchestra_type=my_domain \
@@ -834,7 +631,7 @@ Create a shell script similar to existing examples:
 set -x
 
 ##################### Agent Configurations #####################
-agent_ids='["Planner Agent","Executor Agent","Reviewer Agent"]'
+agent_ids='["Agent 1","Agent 2","Agent 3"]'
 model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
 model_sharing=False
 
