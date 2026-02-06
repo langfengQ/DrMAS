@@ -1,6 +1,11 @@
 # Search Multi-Agent Architecture
 
 ## Overview
+<p align="center">
+    <img src="../../../../docs/drmas/search_multi_agent_workflow.png" alt="Search Multi-Agent Workflow" width="80%">
+</p>
+
+
 
 This is a hierarchical three-agent architecture designed for information search and question answering tasks. The architecture follows a hierarchical structure with distinct layers: a control layer (Verifier Agent) that orchestrates the execution, and an execution layer (Search Agent and Answer Agent) that performs the actual work.
 
@@ -46,5 +51,3 @@ Layer 1 (Control):
     ├─ If "no" → Layer 2 (Execution): Search Agent → Generates search query → Return search query
     └─ If "yes" → Layer 2 (Execution): Answer Agent → Generates answer → Return answer
 ```
-
-

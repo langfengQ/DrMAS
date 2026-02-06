@@ -2,6 +2,10 @@
 
 ## Overview
 
+<p align="center">
+    <img src="../../../../docs/drmas/math_multi_agent_workflow.png" alt="Math Multi-Agent Workflow" width="80%">
+</p>
+
 This is an iterative two-agent architecture designed for mathematical problem solving tasks. The architecture follows an iterative refinement approach with two specialized agents: a Solver Agent that generates step-by-step solutions, and a Verifier Agent that reviews and validates the solutions. The agents work collaboratively in an iterative loop until solutions are approved or a maximum iteration limit is reached.
 
 ## Iterative Architecture
@@ -46,4 +50,3 @@ Iteration Loop (max_loop_num iterations):
 ```
 
 The architecture supports parallel processing of multiple problems, with each problem tracked independently through the approval process. Once a problem is approved by the Verifier Agent, it is excluded from subsequent iterations, allowing the system to focus computational resources on problems that still need refinement.
-

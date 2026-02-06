@@ -236,7 +236,7 @@ algorithm:
   lam: 1.0
   adv_estimator: gae
   norm_adv_by_std_in_grpo: True
-  group_by_agent_id: False # Whether to group by both uid and agent_id in GRPO advantage computation
+  group_by_agent_id: False # Whether to group by both uid and agent_id in group-aware advantage computation (Dr. MAS)
   use_kl_in_reward: False
   kl_penalty: kl  # how to estimate kl divergence
   kl_ctrl:
