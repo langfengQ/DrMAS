@@ -17,7 +17,7 @@ Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems
   <a href="https://huggingface.co/collections/langfeng01/dr-mas">
     <img src="https://img.shields.io/badge/HuggingFace-Models-yellow?style=flat-square&logo=huggingface" alt="HuggingFace Models"></a>
   &nbsp;
-  <a href="https://github.com/langfengQ/DrMAS">
+  <a href="https://x.com/langfengq/status/2020794254453514552">
     <img src="https://img.shields.io/badge/Twitter-Channel-000000?style=flat-square&logo=x" alt="X Channel"></a>
 </p>
 
