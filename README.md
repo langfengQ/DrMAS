@@ -14,7 +14,7 @@ Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems
   <a href="https://github.com/langfengQ/DrMAS">
     <img src="https://img.shields.io/badge/GitHub-Project-181717?style=flat-square&logo=github" alt="GitHub Project"></a>
   &nbsp;
-  <a href="https://github.com/langfengQ/DrMAS">
+  <a href="https://huggingface.co/collections/langfeng01/dr-mas">
     <img src="https://img.shields.io/badge/HuggingFace-Models-yellow?style=flat-square&logo=huggingface" alt="HuggingFace Models"></a>
   &nbsp;
   <a href="https://github.com/langfengQ/DrMAS">
@@ -47,6 +47,8 @@ This framework features **flexible agent registry**, **customizable multi-agent 
 - [Installation](#installation)
   - [Install veRL](#install-verl)
   - [Install Supported Environments](#install-supported-environments)
+    - [1. Search](#1-search)
+    - [2. Math](#2-math)
 - [Run Examples](#run-examples)
   - [Search](#search)
   - [Math](#math)
