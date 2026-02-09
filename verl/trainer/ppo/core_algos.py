@@ -525,6 +525,7 @@ def compute_grpo_outcome_advantage(
         Returns: `(torch.Tensor)`
             shape is (bs, response_length)
     """
+    print("group_by_agent_id: ", group_by_agent_id)
     scores = token_level_rewards.sum(dim=-1)
 
     id2score = defaultdict(list)
