@@ -3,14 +3,14 @@
 </p> -->
 
 <h1 align="center">
-Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems</b>
+Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems
 </h1>
 
 
 <p align="center">
-  <!-- <a href="https://arxiv.org/abs/2505.10978">
-    <img src="https://img.shields.io/badge/arXiv-Paper-red?style=flat-square&logo=arxiv" alt="arXiv Paper"></a>
-  &nbsp; -->
+  <a href="https://github.com/langfengQ/DrMAS">
+    <img src="https://img.shields.io/badge/arXiv-Coming%20Soon-red?style=flat-square&logo=arxiv" alt="arXiv Coming Soon"></a>
+  &nbsp;
   <a href="https://github.com/langfengQ/DrMAS">
     <img src="https://img.shields.io/badge/GitHub-Project-181717?style=flat-square&logo=github" alt="GitHub Project"></a>
   &nbsp;
@@ -50,7 +50,7 @@ This framework features **flexible agent registry**, **customizable multi-agent 
 - [Run Examples](#run-examples)
   - [Search](#search)
   - [Math](#math)
-- [Usage Guide](#usage-guide)
+- [Multi-Agent Development Guide](#multi-agent-development-guide)
 - [Acknowledgement](#acknowledgement)
 
 # Installation
@@ -172,7 +172,7 @@ bash examples/drmas_trainer/run_math.sh eval # Dr.MAS
 bash examples/grpo_trainer/run_math.sh eval # GRPO
 ```
 
-# Usage Guide
+# Multi-Agent Development Guide
 
 For a **comprehensive guide** on developing custom multi-agent LLM systems, including detailed examples and best practices, see the **[Multi-Agent Development Guide](./docs/MULTI_AGENT_DEVELOPMENT_GUIDE.md)**.
 
@@ -181,70 +181,7 @@ The guide covers:
 - Step-by-step agent creation and registration
 - Orchestra development patterns
 - Configuration options and per-agent parameter overrides
-<!-- 
-## Quick Start: Register Custom Agents
 
-1. **Create Agent Class**: Inherit from [BaseAgent](./agent_system/agent/agents/base.py#L13) and implement the `call` method:
-
-```python
-@AgentRegistry.register("Custom Agent")
-class CustomAgent(BaseAgent):
-    def __init__(self, wg_id: str, tokenizer, processor, config):
-        super().__init__("Custom Agent", MY_PROMPT, wg_id, tokenizer, processor, config)
-    
-    def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], 
-             team_context: List[str], actor_rollout_wg, 
-             agent_active_mask, step: int) -> Tuple[DataProto, List[str]]:
-        # Build prompt, generate with LLM, parse output
-        ...
-```
-
-2. **Import Agent Module** in the orchestra's `__init__`:
-
-```python
-import importlib
-importlib.import_module("agent_system.agent.agents.my_agent_module")
-```
-
-## Quick Start: Create Custom Orchestras
-
-1. **Create Orchestra Class**: Inherit from [BaseOrchestra](./agent_system/agent/orchestra/base.py#L53):
-
-```python
-class MyOrchestra(BaseOrchestra):
-    def __init__(self, agent_ids, model_ids, agents_to_wg_mapping, tokenizers, processors, config):
-        importlib.import_module("agent_system.agent.agents.my_agents")
-        super().__init__(agent_ids, model_ids, agents_to_wg_mapping, tokenizers, processors, config)
-    
-    def run(self, gen_batch, env_obs, actor_rollout_wgs, active_masks, step):
-        # Define the execution flow of agents
-        ...
-```
-
-2. **Register Orchestra** in [rollout_loop.py](./agent_system/multi_turn_rollout/rollout_loop.py#L381):
-
-```python
-if orchestra_type == "my_orchestra":
-    from agent_system.agent.orchestra.my_orchestra import MyOrchestra as orchestra
-```
-
-## Agent Configuration
-
-```yaml
-agent:
-  multi_agent: True
-  agent_ids: ["Agent 1", "Agent 2", "Agent 3"]
-  model_ids: ["model/path/1", "model/path/2", "model/path/3"]
-  model_sharing: False  # False = dedicated LLM per agent
-  orchestra_type: search  # "search", "math", or your custom type
-  
-  # Per-agent parameter overrides (order matches agent_ids)
-  agent_specific_parameters:
-    actor.optim.lr: [1e-6, 1e-6, 1e-7]
-    actor.ppo_micro_batch_size_per_gpu: [4, 8, 8]
-```
-
-For detailed examples and advanced patterns, see the **[Multi-Agent Development Guide](./docs/MULTI_AGENT_DEVELOPMENT_GUIDE.md)**. -->
 
 # Acknowledgement
 
