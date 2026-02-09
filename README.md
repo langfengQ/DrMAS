@@ -21,7 +21,7 @@ Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems
     <img src="https://img.shields.io/badge/Twitter-Channel-000000?style=flat-square&logo=x" alt="X Channel"></a>
 </p>
 
-`Dr.MAS` is designed for training **Multi-Agent LLM Systems** via **Reinforcement Learning (RL)**, supporting sophisticated multi-agent setups where specialized LLM-based agents collaborate to tackle complex reasoning and decision-making tasks. 
+`Dr.MAS` is designed for **end-to-end post-training** of **Multi-Agent LLM Systems** via **Reinforcement Learning (RL)**, enabling multiple LLM-based agents to collaborate on complex reasoning and decision-making tasks.
 
 This framework features **flexible agent registry**, **customizable multi-agent orchestration**, **LLM sharing/non-sharing (e.g., heterogeneous LLMs)**, **per-agent configuration**, and **shared resource pooling**, making it well suited for training multi-agent LLM systems with RL.
 
