@@ -1,1 +1,3 @@
 Copyright 2023-2024 Bytedance Ltd. and/or its affiliates 
+Copyright 2026 Nanyang Technological University (NTU), Singapore
+Copyright 2026 Dr. MAS Team
