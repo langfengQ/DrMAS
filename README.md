@@ -61,6 +61,7 @@ This framework features **flexible agent registry**, **customizable multi-agent 
 - [Run Examples](#run-examples)
   - [Search](#search)
   - [Math](#math)
+- [Compute Requirements](#compute-requirements)
 - [Multi-Agent Development Guide](#multi-agent-development-guide)
 - [Acknowledgement](#acknowledgement)
 
@@ -170,6 +171,25 @@ After training completes, evaluate the multi-agent system on the full test datas
 ```bash
 bash examples/drmas_trainer/run_math.sh eval
 ```
+
+# Compute Requirements
+
+### 1. Search Task
+| Strategy | Model Configuration | Resources | Est. Time |
+| :--- | :--- | :--- | :--- |
+| **LLM Sharing** | 1 $\times$ Qwen2.5-3B | 4 $\times$ H100 | ~12h |
+| **LLM Non-Sharing** | 3 $\times$ Qwen2.5-3B | 4 $\times$ H100 | ~13h |
+| **LLM Sharing** | 1 $\times$ Qwen2.5-7B | 8 $\times$ H100 | ~25h |
+| **LLM Non-Sharing** | 3 $\times$ Qwen2.5-7B | 8 $\times$ H100 | ~26h |
+| **Heterogeneous** | 2 $\times$ Llama-3.2-3B + 1 $\times$ Qwen2.5-7B | 8 $\times$ H100 | ~16h |
+
+### 2. Math Task
+| Strategy | Model Configuration | Resources | Est. Time |
+| :--- | :--- | :--- | :--- |
+| **LLM Sharing** | 1 $\times$ Qwen3-4B | 4 $\times$ H100 | ~35h |
+| **LLM Non-Sharing** | 2 $\times$ Qwen3-4B | 4 $\times$ H100 | ~38h |
+| **LLM Sharing** | 1 $\times$ Qwen3-8B | 8 $\times$ H100 | ~37h |
+| **LLM Non-Sharing** | 2 $\times$ Qwen3-8B | 8 $\times$ H100 | ~42h |
 
 # Multi-Agent Development Guide
 
