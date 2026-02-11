@@ -6,19 +6,28 @@
 Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems
 </h1>
 
-
 <p align="center">
-  <a href="https://github.com/langfengQ/DrMAS">
-    <img src="https://img.shields.io/badge/arXiv-Coming%20Soon-red?style=flat-square&logo=arxiv" alt="arXiv Coming Soon"></a>
-  &nbsp;
-  <a href="https://github.com/langfengQ/DrMAS">
-    <img src="https://img.shields.io/badge/GitHub-Project-181717?style=flat-square&logo=github" alt="GitHub Project"></a>
-  &nbsp;
-  <a href="https://huggingface.co/collections/langfeng01/dr-mas">
-    <img src="https://img.shields.io/badge/HuggingFace-Models-yellow?style=flat-square&logo=huggingface" alt="HuggingFace Models"></a>
-  &nbsp;
-  <a href="https://x.com/langfengq/status/2020794254453514552">
-    <img src="https://img.shields.io/badge/Twitter-Channel-000000?style=flat-square&logo=x" alt="X Channel"></a>
+<a href="https://arxiv.org/abs/2602.08847">
+<img src="https://img.shields.io/static/v1?label=arXiv&message=Paper&color=red" alt="arXiv Paper">
+</a>
+<a href="https://huggingface.co/papers/2602.08847">
+<img src="https://img.shields.io/badge/HF%20Daily%20Paper-yellow?logo=huggingface" alt="HuggingFace Daily Paper">
+</a>
+<a href="https://huggingface.co/collections/langfeng01/dr-mas">
+<img src="https://img.shields.io/badge/HuggingFace-Models-yellow?logo=huggingface" alt="HuggingFace Models">
+</a>
+<a href="https://x.com/langfengq/status/2020794254453514552">
+<img src="https://img.shields.io/badge/Twitter-Channel-000000?logo=x" alt="X Channel">
+</a>
+<a href="https://github.com/langfengQ/DrMAS/blob/master/LICENSE">
+<img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License">
+</a>
+<!-- <a href="https://github.com/langfengQ/DrMAS/issues">
+<img src="https://img.shields.io/github/issues/langfengQ/DrMAS" alt="GitHub issues">
+</a> -->
+<a href="https://github.com/langfengQ/DrMAS/stargazers">
+<img src="https://img.shields.io/github/stars/langfengQ/DrMAS?style=social" alt="Repo stars">
+</a>
 </p>
 
 `Dr.MAS` is designed for **end-to-end post-training** of **Multi-Agent LLM Systems** via **Reinforcement Learning (RL)**, enabling multiple LLM-based agents to collaborate on complex reasoning and decision-making tasks.
@@ -137,18 +146,12 @@ python examples/data_preprocess/drmas_math.py
 
 
 ```bash
-bash examples/drmas_trainer/run_search.sh # Dr.MAS
-```
-```bash
-bash examples/grpo_trainer/run_search.sh # GRPO
+bash examples/drmas_trainer/run_search.sh
 ```
 
 After training completes, evaluate the multi-agent system on the full test dataset:
 ```bash
-bash examples/drmas_trainer/run_search.sh eval # Dr.MAS
-```
-```bash
-bash examples/grpo_trainer/run_search.sh eval # GRPO
+bash examples/drmas_trainer/run_search.sh eval
 ```
 
 ## Math
@@ -160,18 +163,12 @@ bash examples/grpo_trainer/run_search.sh eval # GRPO
 
 
 ```bash
-bash examples/drmas_trainer/run_math.sh # Dr.MAS
-```
-```bash
-bash examples/grpo_trainer/run_math.sh # GRPO
+bash examples/drmas_trainer/run_math.sh
 ```
 
 After training completes, evaluate the multi-agent system on the full test dataset:
 ```bash
-bash examples/drmas_trainer/run_math.sh eval # Dr.MAS
-```
-```bash
-bash examples/grpo_trainer/run_math.sh eval # GRPO
+bash examples/drmas_trainer/run_math.sh eval
 ```
 
 # Multi-Agent Development Guide
