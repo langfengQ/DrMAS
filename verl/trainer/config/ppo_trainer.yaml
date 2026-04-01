@@ -56,6 +56,8 @@ actor_rollout_ref:
     clip_ratio_high: 0.2
     clip_ratio_c: 3.0 # lower bound of the value for Dual-clip PPO from https://arxiv.org/pdf/1912.09729
     loss_agg_mode: "token-mean" # / "seq-mean-token-sum" / "seq-mean-token-mean"
+    policy_loss:
+      loss_mode: "vanilla" # "vanilla" for standard PPO, "gspo" for GSPO (https://arxiv.org/pdf/2507.18071)
     entropy_coeff: 0.001
     use_invalid_action_penalty: True
     invalid_action_penalty_coef: 0.1
