@@ -494,6 +494,51 @@ def compute_gae_advantage_return(
 
 
 # NOTE(sgm): this implementation only consider outcome supervision, where the reward is a scalar.
+def summarize_group_std_stats(id2std: Dict[Any, torch.Tensor],
+                               id2score: Dict[Any, list],
+                               idx2agent: Dict[Any, str] = None,
+                               prefix: str = "adv_std",
+                               thresholds: Sequence[float] = (1e-3, 1e-2, 1e-1)) -> Dict[str, float]:
+    """
+    Summarize the (pre-epsilon) group-level std statistics for wandb/console logging, so that we can
+    empirically monitor whether per-agent (or per-group) std collapses to (near) zero during training
+    -- i.e. the pathology Dr.GRPO originally identified with global std normalization, and that a
+    per-agent std (Dr. MAS) could in principle reintroduce for small/near-homogeneous agent groups.
+
+    Args:
+        id2std: mapping from group key -> raw std (before the `+ epsilon` used in normalization)
+        id2score: mapping from group key -> list of raw scores in that group (used for group size)
+        idx2agent: optional mapping from group key -> agent_id string. If None, all groups are
+            reported under a single "all" bucket (e.g. for vanilla GRPO with global grouping).
+        prefix: metric name prefix
+        thresholds: std thresholds used to report the fraction of (near-)degenerate groups
+
+    Returns:
+        A flat dict of scalar metrics, ready to be merged into the training `metrics` dict.
+    """
+    agent2stds = defaultdict(list)
+    agent2sizes = defaultdict(list)
+    for idx, std in id2std.items():
+        agent = idx2agent[idx] if idx2agent is not None else "all"
+        agent2stds[agent].append(float(std.item() if torch.is_tensor(std) else std))
+        agent2sizes[agent].append(len(id2score[idx]))
+
+    metrics = {}
+    for agent, stds in agent2stds.items():
+        stds_arr = np.array(stds, dtype=np.float64)
+        sizes_arr = np.array(agent2sizes[agent], dtype=np.float64)
+        metrics[f"{prefix}/{agent}/mean"] = float(np.mean(stds_arr))
+        metrics[f"{prefix}/{agent}/min"] = float(np.min(stds_arr))
+        metrics[f"{prefix}/{agent}/p5"] = float(np.percentile(stds_arr, 5))
+        metrics[f"{prefix}/{agent}/median"] = float(np.median(stds_arr))
+        metrics[f"{prefix}/{agent}/max"] = float(np.max(stds_arr))
+        metrics[f"{prefix}/{agent}/num_groups"] = float(len(stds_arr))
+        metrics[f"{prefix}/{agent}/group_size_mean"] = float(np.mean(sizes_arr))
+        for thresh in thresholds:
+            metrics[f"{prefix}/{agent}/frac_below_{thresh:g}"] = float(np.mean(stds_arr < thresh))
+    return metrics
+
+
 def compute_grpo_outcome_advantage(
     token_level_rewards: torch.Tensor,
     response_mask: torch.Tensor,
@@ -502,6 +547,8 @@ def compute_grpo_outcome_advantage(
     epsilon: float = 1e-6,
     norm_adv_by_std_in_grpo: bool = True,
     group_by_agent_id: bool = False,
+    agent_ids: np.ndarray = None,
+    return_std_metrics: bool = False,
 ):
     """
     Compute advantage for GRPO, operating only on Outcome reward
@@ -518,12 +565,20 @@ def compute_grpo_outcome_advantage(
         group_by_agent_id: bool
             If True, the mean and std are computed across agent group.
             If False (i.e., standard episode-level adv), the mean and std are computed across trajectories within one group.
+        agent_ids: `(np.ndarray)`, optional
+            shape is (bs,). Per-sample agent id, only used (if provided) to break the std-tracking
+            metrics down by agent for logging purposes. Does not affect the advantage computation itself.
+        return_std_metrics: bool
+            If True, also return a dict of per-agent (raw, pre-epsilon) group-std statistics for
+            monitoring whether std collapses to near zero during training (see `summarize_group_std_stats`).
 
     Returns:
         advantages: `(torch.Tensor)`
             shape is (bs, response_length)
         Returns: `(torch.Tensor)`
             shape is (bs, response_length)
+        std_metrics: `Dict[str, float]`
+            only returned when `return_std_metrics=True`.
     """
     print("group_by_agent_id: ", group_by_agent_id)
     scores = token_level_rewards.sum(dim=-1)
@@ -559,13 +614,39 @@ def compute_grpo_outcome_advantage(
                 id2std[idx] = torch.std(scores_tensor)
             else:
                 raise ValueError(f"no score in prompt index: {idx}")
+
+        std_metrics = {}
+        if return_std_metrics:
+            idx2agent = None
+            if agent_ids is not None:
+                idx2agent = {}
+                for i in range(bsz):
+                    idx2agent.setdefault(index[i], str(agent_ids[i]))
+            std_metrics = summarize_group_std_stats(id2std, id2score, idx2agent=idx2agent)
+
         for i in range(bsz):
             if norm_adv_by_std_in_grpo:
                 scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
             else:
                 scores[i] = scores[i] - id2mean[index[i]]
+
+        if return_std_metrics:
+            # Tail behavior of the *normalized* per-sample advantage (post +epsilon), broken down by
+            # agent. This directly shows whether small std groups translate into blown-up advantages.
+            agent2abs_adv = defaultdict(list)
+            for i in range(bsz):
+                agent = str(agent_ids[i]) if agent_ids is not None else "all"
+                agent2abs_adv[agent].append(abs(float(scores[i].item())))
+            for agent, vals in agent2abs_adv.items():
+                vals_arr = np.array(vals, dtype=np.float64)
+                std_metrics[f"adv_norm/{agent}/abs_max"] = float(np.max(vals_arr))
+                std_metrics[f"adv_norm/{agent}/abs_p99"] = float(np.percentile(vals_arr, 99))
+                std_metrics[f"adv_norm/{agent}/abs_mean"] = float(np.mean(vals_arr))
+
         scores = scores.unsqueeze(-1) * response_mask
 
+    if return_std_metrics:
+        return scores, scores, std_metrics
     return scores, scores
 
 

@@ -298,16 +298,25 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             response_length = grpo_calculation_mask.size(1)  # Get length from the initial response mask
             grpo_calculation_mask = data.batch["loss_mask"][:, -response_length:]  # This mask is the one intended for GRPO
         # Call compute_grpo_outcome_advantage with parameters matching its definition
-        advantages, returns = core_algos.compute_grpo_outcome_advantage(
+        advantages, returns, std_metrics = core_algos.compute_grpo_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=grpo_calculation_mask,
             index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
             group_by_agent_id=group_by_agent_id,
+            # Only break the std-tracking metrics down by agent when grouping is agent-aware.
+            # When group_by_agent_id=False, a single group mixes multiple agents' samples, so
+            # labeling it by whichever agent happens to appear first would be misleading; report
+            # it under a single "all" bucket instead (handled inside compute_grpo_outcome_advantage).
+            agent_ids=data.non_tensor_batch.get("agent_id", None) if group_by_agent_id else None,
+            return_std_metrics=True,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
+        # Stash for the training loop to merge into the logged metrics dict (wandb/console),
+        # so we can monitor whether per-agent (or global) std collapses to near-zero during training.
+        data.meta_info["adv_std_metrics"] = std_metrics
     elif adv_estimator == AdvantageEstimator.GRPO_PASSK:
         advantages, returns = core_algos.compute_grpo_passk_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
@@ -1371,6 +1380,10 @@ class RayPPOTrainer:
                             gigpo_enable_similarity= self.config.algorithm.gigpo.enable_similarity,
                             gigpo_similarity_thresh=self.config.algorithm.gigpo.similarity_thresh,
                         )
+                        # Per-agent (raw, pre-epsilon) group-std tracking for Dr. MAS monitoring,
+                        # logged under `adv_std/{agent}/*` and `adv_norm/{agent}/*`.
+                        adv_std_metrics = batch.meta_info.pop("adv_std_metrics", {})
+                        metrics.update(adv_std_metrics)
 
                     # update critic
                     if self.use_critic:
