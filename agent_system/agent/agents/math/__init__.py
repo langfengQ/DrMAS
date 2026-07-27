@@ -15,8 +15,12 @@
 
 from .solver_agent import SolverAgent
 from .verifier_agent import VerifierAgent
+from .critic_agent import CriticAgent
+from .refiner_agent import RefinerAgent
 
 __all__ = [
     "SolverAgent",
     "VerifierAgent",
+    "CriticAgent",
+    "RefinerAgent",
 ]

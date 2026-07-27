@@ -46,7 +46,21 @@ def update_text_action(text_actions: List[str], text_response: List[str], agent_
     return text_actions
 
 class MathMultiAgentOrchestra(BaseOrchestra):
+    """Solver/Verifier math orchestra, with two optional intermediate roles
+    (Critic Agent, Refiner Agent) that turn the 2-agent workflow into a 4-agent one.
+
+    - 2-agent config (agent_ids=["Solver Agent","Verifier Agent"]): Solver -> Verifier, looped.
+    - 4-agent config (agent_ids=["Solver Agent","Critic Agent","Refiner Agent","Verifier Agent"]):
+      Solver -> Critic -> Refiner -> Verifier, looped. The Critic reviews the Solver's (or a
+      previous loop's Refiner's) draft and writes feedback into the team context; the Refiner
+      then rewrites the solution using that feedback and becomes the new "current answer"; the
+      Verifier gates approval on the refined solution. Critic/Refiner are purely additive: whether
+      they run is decided by whether they are present in `self.agents`, so this class transparently
+      supports both agent counts without any config flag.
+    """
     SOLVER_AGENT = "Solver Agent"
+    CRITIC_AGENT = "Critic Agent"
+    REFINER_AGENT = "Refiner Agent"
     VERIFIER_AGENT = "Verifier Agent"
 
     def __init__(
@@ -98,6 +112,39 @@ class MathMultiAgentOrchestra(BaseOrchestra):
 
             if loop_i == self.max_loop_num - 1:
                 break
+
+            # Critic reviews the current draft (4-agent variant only; no-op if absent)
+            critic_mask = np.logical_and(active_masks, np.logical_not(approved_vector)).astype(bool)
+            if critic_mask.any() and self.CRITIC_AGENT in self.agents:
+                actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.CRITIC_AGENT]]
+                batch, text_repsonses = self.agents[self.CRITIC_AGENT].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=actor_rollout_wg,
+                    agent_active_mask=critic_mask,
+                    step=step,
+                )
+                team_context = update_team_context(self.CRITIC_AGENT, team_context, text_repsonses, critic_mask)
+                self.save_to_buffer(self.CRITIC_AGENT, batch)
+
+            # Refiner rewrites the solution using the Critic's feedback, becoming the new
+            # "current answer" (4-agent variant only; no-op if absent)
+            refiner_mask = np.logical_and(active_masks, np.logical_not(approved_vector)).astype(bool)
+            if refiner_mask.any() and self.REFINER_AGENT in self.agents:
+                actor_rollout_wg = actor_rollout_wgs[self.agents_to_wg_mapping[self.REFINER_AGENT]]
+                batch, text_repsonses = self.agents[self.REFINER_AGENT].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=actor_rollout_wg,
+                    agent_active_mask=refiner_mask,
+                    step=step,
+                )
+                team_context = update_team_context(self.REFINER_AGENT, team_context, text_repsonses, refiner_mask)
+                self.save_to_buffer(self.REFINER_AGENT, batch)
+                text_actions = update_text_action(text_actions, text_repsonses, refiner_mask)
+
             # Verifier checks those items (skip the last loop)
             verifier_mask = np.logical_and(active_masks, np.logical_not(approved_vector)).astype(bool)
             if verifier_mask.any() and self.VERIFIER_AGENT in self.agents:

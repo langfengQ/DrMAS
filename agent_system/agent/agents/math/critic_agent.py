@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple
 from verl import DataProto
 from transformers import PreTrainedTokenizer
 from agent_system.multi_turn_rollout.utils import preprocess_batch
@@ -23,7 +23,7 @@ from agent_system.agent.utils import general_projection
 import numpy as np
 
 
-VERIFIER_PROMPT = """
+CRITIC_PROMPT = """
 # Task Introduction
 {env_prompt}
 
@@ -31,19 +31,20 @@ VERIFIER_PROMPT = """
 {team_context}
 
 # Your Role
-You are a "Verifier Agent". Your responsibility is to critically review the most recent proposed solution from your teammates (e.g. the "Solver Agent" or, if present, the "Refiner Agent"). Check each reasoning step, formula, and conclusion for accuracy, completeness, and logical consistency.
-At the end of your output, you MUST provide your verdict within <verify> </verify> using exactly one of:
-(1) <verify>approve</verify> if all steps and the final answer are correct.
-(2) <verify>reject</verify> if you detect any issue.
+You are a "Critic Agent". Your job is to carefully scrutinize the most recent solution proposed by your teammates (e.g. the "Solver Agent") and produce constructive, actionable feedback. Point out any incorrect reasoning steps, missing cases, computational errors, or unjustified assumptions. If you believe the solution is already correct, say so explicitly and briefly explain why.
+
+Do NOT give a final approve/reject verdict yourself (that is the "Verifier Agent"'s job) and do NOT attempt to solve the problem yourself; only critique. A "Refiner Agent" will use your feedback to produce a revised solution.
+
+You MUST put your critique within <critique> </critique> tags.
 """
 
 
-@AgentRegistry.register("Verifier Agent")
-class VerifierAgent(BaseAgent):
+@AgentRegistry.register("Critic Agent")
+class CriticAgent(BaseAgent):
     def __init__(self, wg_id: str, tokenizer: PreTrainedTokenizer, processor, config: Any):
-        super().__init__("Verifier Agent", VERIFIER_PROMPT, wg_id=wg_id, tokenizer=tokenizer, processor=processor, config=config)
-        self.start_tag = "<verify>"
-        self.end_tag = "</verify>"
+        super().__init__("Critic Agent", CRITIC_PROMPT, wg_id=wg_id, tokenizer=tokenizer, processor=processor, config=config)
+        self.start_tag = "<critique>"
+        self.end_tag = "</critique>"
 
     def call(self, gen_batch: DataProto, env_obs: Dict[str, Any], team_context: List[str], actor_rollout_wg, agent_active_mask, step: int) -> Tuple[DataProto, List[str]]:
         obs = self.build_prompt(env_obs, team_context, step)
@@ -63,28 +64,7 @@ class VerifierAgent(BaseAgent):
             check_think_tag=False,
             return_whole_response=True,
         )
+
         batch.non_tensor_batch['is_action_valid'] = valids
         batch.non_tensor_batch['env_step'] = np.array([step] * len(text_repsonses), dtype=object)
         return batch, text_repsonses
-
-    def update_approved_vector(self, text_repsonses: List[str], approved_vector: np.ndarray, agent_active_mask: Optional[np.ndarray] = None) -> np.ndarray:
-        if agent_active_mask is None:
-            agent_active_mask = np.ones(len(text_repsonses), dtype=bool)
-
-        new_approved_vector: List[bool] = []
-        for i in range(len(text_repsonses)):
-            if agent_active_mask[i]:
-                if "<verify>approve</verify>" in text_repsonses[i]:
-                    new_approved_vector.append(True)
-                elif "<verify>reject</verify>" in text_repsonses[i]:
-                    new_approved_vector.append(False)
-                else:
-                    new_approved_vector.append(True)
-            else:
-                new_approved_vector.append(True)
-
-        new_approved_vector = np.array(new_approved_vector, dtype=bool)
-        updated_vector = np.logical_or(approved_vector, new_approved_vector).astype(bool)
-        return updated_vector
-
-
