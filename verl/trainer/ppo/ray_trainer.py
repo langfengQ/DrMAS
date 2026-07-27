@@ -298,25 +298,33 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             response_length = grpo_calculation_mask.size(1)  # Get length from the initial response mask
             grpo_calculation_mask = data.batch["loss_mask"][:, -response_length:]  # This mask is the one intended for GRPO
         # Call compute_grpo_outcome_advantage with parameters matching its definition
-        advantages, returns, std_metrics = core_algos.compute_grpo_outcome_advantage(
+        balance_loss_by_agent_freq = kwargs.get("balance_loss_by_agent_freq", False)
+        advantages, returns, extra = core_algos.compute_grpo_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
             response_mask=grpo_calculation_mask,
             index=group_index,
             traj_index=data.non_tensor_batch['traj_uid'],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
             group_by_agent_id=group_by_agent_id,
-            # Only break the std-tracking metrics down by agent when grouping is agent-aware.
-            # When group_by_agent_id=False, a single group mixes multiple agents' samples, so
-            # labeling it by whichever agent happens to appear first would be misleading; report
-            # it under a single "all" bucket instead (handled inside compute_grpo_outcome_advantage).
-            agent_ids=data.non_tensor_batch.get("agent_id", None) if group_by_agent_id else None,
+            # agent_ids/uids are always passed (regardless of group_by_agent_id): the adv_std/*
+            # per-agent bucketing internally only activates when group_by_agent_id=True (to avoid
+            # mislabeling mixed-agent groups), while the adv_diag/* Lemma 4.2 diagnostics and the
+            # loss-balancing weights are intentionally independent of group_by_agent_id.
+            agent_ids=data.non_tensor_batch.get("agent_id", None),
+            uids=data.non_tensor_batch.get("uid", None),
             return_std_metrics=True,
+            balance_loss_by_agent_freq=balance_loss_by_agent_freq,
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
-        # Stash for the training loop to merge into the logged metrics dict (wandb/console),
-        # so we can monitor whether per-agent (or global) std collapses to near-zero during training.
-        data.meta_info["adv_std_metrics"] = std_metrics
+        # Stash for the training loop to merge into the logged metrics dict (wandb/console), so we
+        # can monitor whether per-agent (or global) std collapses to near-zero during training, and
+        # connect Lemma 4.2's inflation factor to observed clip/KL/grad-norm behavior.
+        data.meta_info["adv_std_metrics"] = extra.get("std_metrics", {})
+        loss_weights = extra.get("loss_weights", None)
+        if loss_weights is not None:
+            response_length = grpo_calculation_mask.shape[-1]
+            data.batch["loss_weights"] = loss_weights.unsqueeze(-1).tile([1, response_length])
     elif adv_estimator == AdvantageEstimator.GRPO_PASSK:
         advantages, returns = core_algos.compute_grpo_passk_outcome_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
@@ -1362,6 +1370,7 @@ class RayPPOTrainer:
 
                         norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)  # GRPO adv normalization factor
                         group_by_agent_id = self.config.algorithm.get("group_by_agent_id", False) # 
+                        balance_loss_by_agent_freq = self.config.algorithm.get("balance_loss_by_agent_freq", False)
 
                         batch = compute_advantage(
                             batch,
@@ -1371,6 +1380,7 @@ class RayPPOTrainer:
                             num_repeat=self.config.actor_rollout_ref.rollout.n,
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
                             group_by_agent_id=group_by_agent_id,
+                            balance_loss_by_agent_freq=balance_loss_by_agent_freq,
                             multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
                             use_pf_ppo=self.config.algorithm.use_pf_ppo,
                             pf_ppo_reweight_method=self.config.algorithm.pf_ppo.reweight_method,

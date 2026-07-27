@@ -539,6 +539,139 @@ def summarize_group_std_stats(id2std: Dict[Any, torch.Tensor],
     return metrics
 
 
+def _compute_global_uid_stats(raw_scores: torch.Tensor, uids: np.ndarray, traj_index: np.ndarray) -> tuple:
+    """
+    Mirrors vanilla GRPO's grouping exactly (see the `not group_by_agent_id` branch of
+    `compute_grpo_outcome_advantage`): active steps within the same trajectory (possibly from
+    different agents) are first averaged into a single scalar per trajectory, then mean/std are
+    computed across trajectories sharing the same `uid`.
+
+    This is used purely as a diagnostic "shadow" computation (see `summarize_group_diagnostics`)
+    and never affects the actual advantage used for training.
+    """
+    bsz = raw_scores.shape[0]
+    traj_acc = defaultdict(list)
+    for i in range(bsz):
+        traj_acc[(uids[i], traj_index[i])].append(raw_scores[i])
+    id2score = defaultdict(list)
+    for (u, _t), vals in traj_acc.items():
+        id2score[u].append(torch.stack(vals).mean())
+    id2mean, id2std = {}, {}
+    for u, vals in id2score.items():
+        if len(vals) == 1:
+            id2mean[u], id2std[u] = torch.tensor(0.0), torch.tensor(1.0)
+        else:
+            t = torch.stack(vals)
+            id2mean[u], id2std[u] = torch.mean(t), torch.std(t)
+    return id2mean, id2std
+
+
+def _compute_per_agent_stats(raw_scores: torch.Tensor, uids: np.ndarray, agent_ids: np.ndarray) -> tuple:
+    """
+    Mirrors Dr. MAS's grouping exactly (see the `group_by_agent_id` branch of
+    `compute_grpo_outcome_advantage`): every active-step sample sharing the same (uid, agent_id) is
+    pooled directly (no within-trajectory averaging), then mean/std are computed per (uid, agent_id).
+
+    This is used purely as a diagnostic "shadow" computation (see `summarize_group_diagnostics`)
+    and never affects the actual advantage used for training.
+    """
+    bsz = raw_scores.shape[0]
+    id2score = defaultdict(list)
+    idx2agent = {}
+    for i in range(bsz):
+        key = (uids[i], agent_ids[i])
+        id2score[key].append(raw_scores[i])
+        idx2agent[key] = str(agent_ids[i])
+    id2mean, id2std = {}, {}
+    for key, vals in id2score.items():
+        if len(vals) == 1:
+            id2mean[key], id2std[key] = torch.tensor(0.0), torch.tensor(1.0)
+        else:
+            t = torch.stack(vals)
+            id2mean[key], id2std[key] = torch.mean(t), torch.std(t)
+    return id2mean, id2std, idx2agent
+
+
+def summarize_group_diagnostics(agent_mean: Dict[Any, torch.Tensor],
+                                 agent_std: Dict[Any, torch.Tensor],
+                                 idx2agent: Dict[Any, str],
+                                 global_mean: Dict[Any, torch.Tensor],
+                                 global_std: Dict[Any, torch.Tensor],
+                                 prefix: str = "adv_diag") -> Dict[str, float]:
+    """
+    Connects Lemma 4.2's per-agent gradient-inflation term to directly loggable quantities, by
+    comparing each agent's own (mu_k, sigma_k) (per (uid, agent_id) group) against the *global*
+    (mu, sigma) that vanilla GRPO would have used for the very same uid (mu_k, sigma_k, mu, sigma
+    are all computed independently of `group_by_agent_id`, so this can be logged whether the run is
+    actually training with vanilla GRPO or with Dr. MAS).
+
+    For every (uid, agent_id) group:
+        mean_gap      = mu_k - mu
+        var_ratio     = sigma_k^2 / sigma^2
+        inflation     = (sigma_k^2 + mean_gap^2) / sigma^2      (the Lemma 4.2 multiplier)
+
+    Returns a flat dict of per-agent aggregated statistics of the above three quantities.
+    """
+    agent2mean_gap = defaultdict(list)
+    agent2var_ratio = defaultdict(list)
+    agent2inflation = defaultdict(list)
+    for key, mu_k_t in agent_mean.items():
+        uid = key[0]
+        if uid not in global_mean:
+            continue
+        mu_k = float(mu_k_t.item())
+        sigma_k = float(agent_std[key].item())
+        mu = float(global_mean[uid].item())
+        sigma = float(global_std[uid].item())
+        mean_gap = mu_k - mu
+        var_ratio = (sigma_k**2) / (sigma**2 + 1e-12)
+        inflation = (sigma_k**2 + mean_gap**2) / (sigma**2 + 1e-12)
+        agent = idx2agent[key]
+        agent2mean_gap[agent].append(mean_gap)
+        agent2var_ratio[agent].append(var_ratio)
+        agent2inflation[agent].append(inflation)
+
+    metrics = {}
+    for agent in agent2mean_gap:
+        mg = np.array(agent2mean_gap[agent], dtype=np.float64)
+        vr = np.array(agent2var_ratio[agent], dtype=np.float64)
+        inf_ = np.array(agent2inflation[agent], dtype=np.float64)
+        metrics[f"{prefix}/{agent}/mean_gap_mean"] = float(np.mean(mg))
+        metrics[f"{prefix}/{agent}/mean_gap_abs_mean"] = float(np.mean(np.abs(mg)))
+        metrics[f"{prefix}/{agent}/mean_gap_abs_max"] = float(np.max(np.abs(mg)))
+        metrics[f"{prefix}/{agent}/var_ratio_mean"] = float(np.mean(vr))
+        metrics[f"{prefix}/{agent}/var_ratio_min"] = float(np.min(vr))
+        metrics[f"{prefix}/{agent}/var_ratio_max"] = float(np.max(vr))
+        metrics[f"{prefix}/{agent}/inflation_factor_mean"] = float(np.mean(inf_))
+        metrics[f"{prefix}/{agent}/inflation_factor_p95"] = float(np.percentile(inf_, 95))
+        metrics[f"{prefix}/{agent}/inflation_factor_max"] = float(np.max(inf_))
+    return metrics
+
+
+def compute_loss_balance_weights(uids: np.ndarray, agent_ids: np.ndarray, device=None) -> torch.Tensor:
+    """
+    Per-sample loss weight that equalizes each (uid, agent_id) group's total contribution to the
+    policy-gradient loss, regardless of how many active-step samples that agent happened to produce
+    for that prompt (e.g. a verifier invoked 3x in a loop vs. 1x elsewhere). This isolates whether
+    Dr. MAS's gain comes from *re-centering/re-scaling the advantage value* (mu_k, sigma_k) vs. from
+    *implicitly re-weighting the gradient* towards agents/prompts with fewer active steps.
+
+    weight_i = (1 / n_{(uid_i, agent_i)}) / mean(1 / n_{(uid_j, agent_j)} for all j)
+
+    so that the batch-average weight is 1 (keeps the overall loss scale, and thus the effective
+    learning rate, comparable to the unweighted baseline).
+
+    Returns:
+        loss_weights: `(torch.Tensor)`, shape (bs,)
+    """
+    bsz = len(uids)
+    freq_key = list(zip(uids.tolist() if isinstance(uids, np.ndarray) else uids,
+                         agent_ids.tolist() if isinstance(agent_ids, np.ndarray) else agent_ids))
+    counts = Counter(freq_key)
+    raw_weight = torch.tensor([1.0 / counts[k] for k in freq_key], dtype=torch.float32, device=device)
+    return raw_weight / raw_weight.mean()
+
+
 def compute_grpo_outcome_advantage(
     token_level_rewards: torch.Tensor,
     response_mask: torch.Tensor,
@@ -548,7 +681,9 @@ def compute_grpo_outcome_advantage(
     norm_adv_by_std_in_grpo: bool = True,
     group_by_agent_id: bool = False,
     agent_ids: np.ndarray = None,
+    uids: np.ndarray = None,
     return_std_metrics: bool = False,
+    balance_loss_by_agent_freq: bool = False,
 ):
     """
     Compute advantage for GRPO, operating only on Outcome reward
@@ -567,21 +702,36 @@ def compute_grpo_outcome_advantage(
             If False (i.e., standard episode-level adv), the mean and std are computed across trajectories within one group.
         agent_ids: `(np.ndarray)`, optional
             shape is (bs,). Per-sample agent id, only used (if provided) to break the std-tracking
-            metrics down by agent for logging purposes. Does not affect the advantage computation itself.
+            metrics down by agent for logging purposes, and/or to compute the loss-balancing weights.
+            Does not affect the advantage computation itself.
+        uids: `(np.ndarray)`, optional
+            shape is (bs,). Per-sample raw prompt-group uid (regardless of `group_by_agent_id`), only
+            used (if provided, together with `agent_ids`) to compute the Lemma 4.2 diagnostics
+            (see `summarize_group_diagnostics`) and/or the loss-balancing weights.
         return_std_metrics: bool
             If True, also return a dict of per-agent (raw, pre-epsilon) group-std statistics for
-            monitoring whether std collapses to near zero during training (see `summarize_group_std_stats`).
+            monitoring whether std collapses to near zero during training (see `summarize_group_std_stats`),
+            plus -- when both `uids` and `agent_ids` are provided -- the `adv_diag/*` mean-gap /
+            var-ratio / inflation-factor diagnostics from `summarize_group_diagnostics`.
+        balance_loss_by_agent_freq: bool
+            If True, also return a per-sample `loss_weights` tensor (see `compute_loss_balance_weights`)
+            that equalizes each (uid, agent_id) group's contribution to the policy loss. This is
+            orthogonal to `group_by_agent_id`/`norm_adv_by_std_in_grpo` and can be combined with any
+            of them, to isolate normalization effects from implicit invocation-frequency rebalancing.
 
     Returns:
         advantages: `(torch.Tensor)`
             shape is (bs, response_length)
         Returns: `(torch.Tensor)`
             shape is (bs, response_length)
-        std_metrics: `Dict[str, float]`
-            only returned when `return_std_metrics=True`.
+        extra: `Dict[str, Any]`
+            only returned when `return_std_metrics=True` or `balance_loss_by_agent_freq=True`.
+            Contains `"std_metrics"` (Dict[str, float], possibly {}) and `"loss_weights"`
+            (`torch.Tensor` of shape (bs,), or None).
     """
     print("group_by_agent_id: ", group_by_agent_id)
     scores = token_level_rewards.sum(dim=-1)
+    want_extra = return_std_metrics or balance_loss_by_agent_freq
 
     id2score = defaultdict(list)
     id2mean = {}
@@ -590,6 +740,10 @@ def compute_grpo_outcome_advantage(
     traj2avg = {}
     with torch.no_grad():
         bsz = scores.shape[0]
+        # Snapshot of the raw per-sample rewards, taken before any in-place normalization below, so
+        # that the diagnostics (which need the raw distribution) are unaffected by that mutation.
+        raw_scores = scores.clone() if return_std_metrics else None
+
         for i in range(bsz):
             traj_accumulator[(index[i], traj_index[i])].append(scores[i])
         
@@ -617,12 +771,30 @@ def compute_grpo_outcome_advantage(
 
         std_metrics = {}
         if return_std_metrics:
+            # Only break the adv_std/* bucketing down by agent when grouping is itself agent-aware
+            # (group_by_agent_id=True); otherwise `index` mixes multiple agents per group and
+            # labeling it by whichever agent happens to appear first would be misleading.
             idx2agent = None
-            if agent_ids is not None:
+            if agent_ids is not None and group_by_agent_id:
                 idx2agent = {}
                 for i in range(bsz):
                     idx2agent.setdefault(index[i], str(agent_ids[i]))
             std_metrics = summarize_group_std_stats(id2std, id2score, idx2agent=idx2agent)
+
+            if uids is not None and agent_ids is not None:
+                # Lemma 4.2 diagnostics: connect the theoretical inflation term to a loggable metric,
+                # computed independently of `group_by_agent_id` so it can be reported for either a
+                # vanilla-GRPO or a Dr. MAS training run.
+                global_mean, global_std = _compute_global_uid_stats(raw_scores, uids, traj_index)
+                agent_mean, agent_std, diag_idx2agent = _compute_per_agent_stats(raw_scores, uids, agent_ids)
+                diag_metrics = summarize_group_diagnostics(agent_mean, agent_std, diag_idx2agent, global_mean, global_std)
+                std_metrics.update(diag_metrics)
+
+        loss_weights = None
+        if balance_loss_by_agent_freq:
+            if uids is None or agent_ids is None:
+                raise ValueError("balance_loss_by_agent_freq=True requires both `uids` and `agent_ids` to be provided.")
+            loss_weights = compute_loss_balance_weights(uids, agent_ids, device=scores.device)
 
         for i in range(bsz):
             if norm_adv_by_std_in_grpo:
@@ -645,8 +817,8 @@ def compute_grpo_outcome_advantage(
 
         scores = scores.unsqueeze(-1) * response_mask
 
-    if return_std_metrics:
-        return scores, scores, std_metrics
+    if want_extra:
+        return scores, scores, {"std_metrics": std_metrics, "loss_weights": loss_weights}
     return scores, scores
 
 
@@ -914,6 +1086,7 @@ def compute_policy_loss(
     cliprange_high=None,
     clip_ratio_c=3.0,
     loss_agg_mode: str = "token-mean",
+    loss_weights=None,
 ):
     """
     Compute the clipped policy objective and related metrics for PPO.
@@ -942,6 +1115,12 @@ def compute_policy_loss(
             Defaults to 3.0.
         loss_agg_mode (str, optional):
             Aggregation mode for `agg_loss`. Defaults to "token-mean".
+        loss_weights (torch.Tensor, optional):
+            Per-sample weight, shape (batch_size,) or (batch_size, response_length). If provided, it
+            is multiplied into the (unclipped/clipped) per-token pg loss *before* aggregation, e.g. to
+            equalize each agent/prompt's contribution to the loss regardless of its invocation
+            frequency (see `compute_loss_balance_weights`). It does NOT affect `pg_clipfrac`/`ppo_kl`,
+            which remain raw/unweighted diagnostics.
     """
     assert clip_ratio_c > 1.0, "The lower bound of the clip_ratio_c for dual-clip PPO should be greater than 1.0," + f" but get the value: {clip_ratio_c}."
 
@@ -963,6 +1142,10 @@ def compute_policy_loss(
     pg_clipfrac_lower = verl_F.masked_mean(torch.gt(clip_pg_losses1, pg_losses3) * (advantages < 0).float(), response_mask)
 
     pg_losses = torch.where(advantages < 0, clip_pg_losses2, clip_pg_losses1)
+    if loss_weights is not None:
+        if loss_weights.dim() == 1:
+            loss_weights = loss_weights.unsqueeze(-1)
+        pg_losses = pg_losses * loss_weights
     pg_loss = agg_loss(loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
 
     return pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower
