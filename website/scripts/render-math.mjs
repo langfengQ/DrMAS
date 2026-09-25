@@ -13,6 +13,7 @@ export function renderMath(html) {
       throwOnError: true,
       strict: 'error',
       trust: false,
+      macros: { '\\bm': '\\boldsymbol{#1}' },
     });
     return `<${tag}${attributes}>${rendered}</${tag}>`;
   });

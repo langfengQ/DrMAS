@@ -1,0 +1,129 @@
+/* Follow the five framework paragraphs in the final paper's Section 4.3. */
+.fs-section.section { padding-block: 80px; }
+.fs-heading.section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; margin-bottom: 30px; }
+.fs-heading-copy { max-width: 380px; padding-bottom: 3px; }
+.fs-heading-copy > p { color: var(--muted); font-size: 14px; line-height: 1.75; }
+.fs-source-links { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 12px; font-size: 11px; color: var(--accent-strong); }
+.fs-source-links a, .fs-workflow-figure figcaption a { text-decoration: underline; text-decoration-color: #d6c3df; text-underline-offset: 4px; }
+.fs-source-links a:hover, .fs-workflow-figure figcaption a:hover { text-decoration-color: currentColor; }
+.fs-source-links span { margin-left: 3px; }
+
+.fs-system-figure { padding: 18px 20px 13px; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
+.fs-system-figure img { max-width: 1000px; margin-inline: auto; }
+.fs-system-figure figcaption { display: flex; gap: 22px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #eee9f1; font-size: 10px; }
+.fs-system-figure figcaption > span { color: #58445f; }
+
+.fs-components { margin-top: 32px; border-top: 1px solid var(--line); }
+.fs-component { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 42px; padding-block: 28px; }
+.fs-component + .fs-component { border-top: 1px solid var(--line); }
+.fs-component:last-child { padding-bottom: 0; }
+.fs-component-heading { display: flex; align-items: baseline; gap: 14px; }
+.fs-component-index { color: var(--accent); font: 10px/1.9 var(--mono); flex: 0 0 auto; }
+.fs-component-heading h3 { font-size: 20px; line-height: 1.35; letter-spacing: -.035em; }
+.fs-component-body { min-width: 0; }
+.fs-component-body > p { color: #6b626f; font-size: 13px; line-height: 1.85; }
+.fs-component-body > p + p { margin-top: 14px; }
+.fs-component-body code { color: #6c467a; font: .9em/1.6 var(--mono); overflow-wrap: anywhere; }
+
+.fs-workflows { margin-top: 20px; }
+.fs-workflow-figure .figure-zoom { border-radius: 0; }
+.fs-workflow-figure figcaption { margin-top: 8px; font-size: 9px; }
+.fs-workflow-figure figcaption a { margin-left: 5px; color: var(--accent-strong); }
+.fs-workflow-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin: 15px 0 0; }
+.fs-workflow-notes > div { padding-left: 13px; border-left: 2px solid #cbb5d5; }
+.fs-workflow-notes > div + div { border-color: #ebc5a3; }
+.fs-workflow-notes dt { font-family: var(--display); font-size: 12px; font-weight: 500; line-height: 1.5; letter-spacing: -.015em; }
+.fs-workflow-notes dd { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.75; }
+
+.fs-assignment { display: grid; grid-template-columns: 1fr 1fr; gap: 34px; margin-top: 19px; }
+.fs-map-option { min-width: 0; }
+.fs-map-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-family: var(--display); font-size: 14px; font-weight: 500; letter-spacing: -.02em; }
+.fs-map-title > span { color: var(--muted); font: 9px var(--mono); letter-spacing: 0; }
+.fs-map-labels { display: flex; justify-content: space-between; gap: 8px; margin-block: 9px 7px; font: 8px/1.6 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.fs-map { display: grid; grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1.25fr); align-items: center; }
+.fs-roles, .fs-workers { display: flex; flex-direction: column; gap: 6px; }
+.fs-roles > span, .fs-workers > span { display: flex; align-items: center; justify-content: center; min-height: 26px; border: 1px solid var(--line); border-radius: 3px; font-size: 10px; line-height: 1.4; padding: 3px 6px; white-space: nowrap; }
+.fs-roles > span { background: #fff; color: #655d6b; }
+.fs-workers > span { background: var(--accent-wash); border-color: #d9c5e2; color: var(--accent-strong); font-weight: 550; }
+.fs-map-lines { display: block; width: 52px; height: 90px; fill: none; stroke: #b998c7; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+.fs-map-separate .fs-map-lines { stroke: #d5ae8d; }
+.fs-map-separate .fs-workers > span { background: #fff6ee; border-color: #ecd2bb; color: #81552e; }
+.fs-map-note { color: var(--muted); font-size: 10px; line-height: 1.7; margin-top: 7px; }
+
+.fs-component-body > .fs-sharing-constraint { padding: 11px 15px; border-left: 2px solid #cbb5d5; background: #f7f3f9; color: #6b5874; font-size: 12px; }
+.fs-sharing-constraint strong { font-weight: 600; color: #58445f; }
+.fs-lifecycle { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; padding: 0; margin: 19px 0 0; }
+.fs-lifecycle > li { display: flex; align-items: flex-start; gap: 11px; padding-right: 20px; }
+.fs-lifecycle > li + li { border-left: 1px solid var(--line); padding-left: 20px; }
+.fs-lifecycle > li:last-child { padding-right: 0; }
+.fs-step-index { font: 9px/2 var(--mono); color: var(--accent); }
+.fs-lifecycle > li:last-child .fs-step-index { color: #a26d40; }
+.fs-lifecycle h4 { margin: 0; font-family: var(--display); font-size: 13px; font-weight: 500; letter-spacing: -.015em; line-height: 1.5; }
+.fs-lifecycle h4 code { font-size: 11px; }
+.fs-lifecycle p { color: var(--muted); font-size: 11px; line-height: 1.75; margin-top: 6px; }
+.fs-batch-equation.math-block { width: fit-content; max-width: 100%; margin-block: 12px; padding: 9px 22px; border-left: 2px solid #cbb5d5; background: #f7f3f9; font-size: 14px; }
+.fs-batch-equation .katex-display { margin: .35em 0; }
+
+@media (max-width: 1000px) {
+  .fs-heading.section-heading { gap: 30px; }
+  .fs-heading-copy { max-width: 325px; }
+  .fs-component { grid-template-columns: 215px minmax(0, 1fr); gap: 28px; }
+  .fs-component-heading { gap: 11px; }
+  .fs-component-heading h3 { font-size: 18px; }
+  .fs-assignment { gap: 25px; }
+  .fs-map { grid-template-columns: minmax(0, 1fr) 35px minmax(0, 1.25fr); }
+  .fs-map-lines { width: 35px; }
+  .fs-roles > span, .fs-workers > span { font-size: 9px; padding-inline: 4px; }
+  .fs-lifecycle > li { display: block; padding-right: 15px; }
+  .fs-lifecycle > li + li { padding-left: 15px; }
+  .fs-step-index { display: block; margin-bottom: 5px; }
+}
+@media (max-width: 760px) {
+  .fs-section.section { padding-block: 60px; }
+  .fs-heading.section-heading { display: block; }
+  .fs-heading-copy { max-width: 530px; margin-top: 17px; }
+  .fs-heading-copy > p { font-size: 13px; }
+  .fs-system-figure { padding: 13px; }
+  .fs-system-figure figcaption { flex-direction: column; gap: 2px; }
+  .fs-components { margin-top: 26px; }
+  .fs-component { grid-template-columns: 1fr; gap: 14px; padding-block: 25px; }
+  .fs-component-heading { gap: 12px; }
+  .fs-component-heading h3 { font-size: 21px; }
+  .fs-component-body > p { font-size: 13px; }
+  .fs-map { grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1.25fr); }
+  .fs-map-lines { width: 52px; }
+  .fs-roles > span, .fs-workers > span { font-size: 10px; }
+  .fs-lifecycle > li { display: flex; gap: 10px; }
+  .fs-step-index { margin-bottom: 0; }
+}
+@media (max-width: 540px) {
+  .fs-section.section { padding-block: 56px; }
+  .fs-heading.section-heading { margin-bottom: 24px; }
+  .fs-heading-copy { margin-top: 15px; }
+  .fs-source-links { gap: 20px; }
+  .fs-system-figure { padding: 10px; }
+  .fs-system-figure figcaption { font-size: 9px; }
+  .fs-component-heading h3 { font-size: 20px; line-height: 1.35; }
+  .fs-component-body > p { font-size: 12px; line-height: 1.85; }
+  .fs-workflows { margin-top: 16px; }
+  .fs-workflow-notes { grid-template-columns: 1fr; gap: 15px; margin-top: 15px; }
+  .fs-workflow-notes dt { font-size: 13px; }
+  .fs-workflow-notes dd { font-size: 12px; }
+  .fs-assignment { grid-template-columns: 1fr; gap: 23px; margin-top: 18px; }
+  .fs-map-option { max-width: 410px; }
+  .fs-map { grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1.25fr); }
+  .fs-map-lines { width: 64px; }
+  .fs-roles > span, .fs-workers > span { font-size: 11px; }
+  .fs-map-labels { font-size: 9px; }
+  .fs-map-note { font-size: 11px; }
+  .fs-component-body > .fs-sharing-constraint { padding: 11px 13px; font-size: 12px; }
+  .fs-lifecycle { grid-template-columns: 1fr; margin-top: 9px; }
+  .fs-lifecycle > li, .fs-lifecycle > li + li { display: flex; gap: 13px; border-left: 0; padding: 12px 0; }
+  .fs-lifecycle > li + li { border-top: 1px solid var(--line); }
+  .fs-lifecycle > li:last-child { padding-bottom: 0; }
+  .fs-step-index { font-size: 10px; }
+  .fs-lifecycle h4 { font-size: 14px; }
+  .fs-lifecycle h4 code { font-size: 12px; }
+  .fs-lifecycle p { font-size: 12px; margin-top: 4px; }
+  .fs-batch-equation.math-block { width: 100%; padding: 9px 10px; font-size: 12px; }
+}

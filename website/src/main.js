@@ -1,4 +1,7 @@
 import { experiments, formatGain, getResults } from './results.js';
+import { initGradientDemo } from './gradient-demo.js';
+import { getGainScale, getGainGeometry, formatGainTick } from './results-visual.js';
+import { initGitHubStars } from './github-stars.js';
 
 document.documentElement.classList.add('js');
 
@@ -8,15 +11,26 @@ const explorer = document.querySelector('#results-explorer');
 
 function renderResults(announce = true) {
   const result = getResults(state);
-  document.querySelector('#results-body').innerHTML = result.rows.map((row) => `
+  const scale = getGainScale(result.rows.map((row) => row.gain));
+  const gainAxis = document.querySelector('#gain-axis');
+  gainAxis.dataset.limit = String(scale.limit);
+  gainAxis.setAttribute('aria-hidden', 'true');
+  gainAxis.innerHTML = scale.ticks.map((tick) => `
+    <span class="gain-axis-tick" data-value="${tick}" style="left:${50 + tick / scale.limit * 50}%">${formatGainTick(tick)}</span>
+  `).join('');
+  document.querySelector('#gain-scale-note').textContent = `Shared scale: ${formatGainTick(-scale.limit)} to ${formatGainTick(scale.limit)} percentage points (pp). Zero means equal scores. The scale updates with the selected configuration.`;
+  document.querySelector('#results-body').innerHTML = result.rows.map((row) => {
+    const geometry = getGainGeometry(row.gain, scale.limit);
+    return `
     <tr class="${row.benchmark === 'Average' ? 'average-row' : ''}">
       <th scope="row">${row.benchmark}</th>
-      <td class="bar-column" aria-hidden="true"><div class="bar-pair"><span class="bar grpo-bar" style="width:${row.grpo}%"></span><span class="bar drmas-bar" style="width:${row.drmas}%"></span></div></td>
-      <td>${row.grpo.toFixed(1)}</td>
-      <td class="drmas-cell">${row.drmas.toFixed(1)}</td>
+      <td class="bar-column" aria-hidden="true"><div class="gain-track" data-gain="${row.gain}" data-limit="${scale.limit}" data-direction="${geometry.direction}" style="--gain-start:${geometry.start}%;--gain-width:${geometry.width}%;--gain-end:${geometry.end}%"><span class="gain-zero"></span><span class="gain-bar"></span><span class="gain-marker"></span></div></td>
+      <td class="grpo-cell" data-label="GRPO">${row.grpo.toFixed(1)}</td>
+      <td class="drmas-cell" data-label="Dr. MAS">${row.drmas.toFixed(1)}</td>
       <td class="gain-cell ${row.gain < 0 ? 'negative' : row.gain === 0 ? 'neutral' : ''}">${formatGain(row.gain)}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
   document.querySelector('#baseline-average').innerHTML = `${result.average.grpo.toFixed(1)}<span>%</span>`;
   document.querySelector('#drmas-average').innerHTML = `${result.average.drmas.toFixed(1)}<span>%</span>`;
   document.querySelector('#average-gain').textContent = `${formatGain(result.average.gain)} pp`;
@@ -56,6 +70,8 @@ modelSelect.addEventListener('change', () => {
 });
 renderResults(false);
 explorer.hidden = false;
+initGradientDemo();
+initGitHubStars();
 
 const menuButton = document.querySelector('.menu-toggle');
 const navigation = document.querySelector('#navigation');
@@ -175,5 +191,5 @@ if ('IntersectionObserver' in window) {
       });
     }
   }, { rootMargin: '-15% 0px -65% 0px', threshold: 0 });
-  document.querySelectorAll('#overview, #method, #results, #citation').forEach((section) => sectionObserver.observe(section));
+  document.querySelectorAll('#overview, #method, #framework, #results, #citation').forEach((section) => sectionObserver.observe(section));
 }
