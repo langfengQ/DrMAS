@@ -14,7 +14,7 @@ test('production page loads under /DrMAS/ without broken local assets', async ({
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#8c569b');
   await expect(page.locator('.grpo-bar').first()).toHaveCSS('background-color', 'rgb(247, 176, 111)');
   await expect(page.locator('.drmas-cell').first()).toHaveCSS('background-color', 'rgb(238, 240, 242)');
-  for (const asset of ['paper.pdf', 'citation.bib', 'figures/framework.png', 'figures/training-dynamics.png', 'favicon.svg']) {
+  for (const asset of ['paper.pdf', 'citation.bib', 'figures/overview.png', 'figures/framework.png', 'figures/training-dynamics.png', 'favicon.svg']) {
     const response = await request.get(asset);
     expect(response.status()).toBe(200);
     if (asset.endsWith('.pdf')) expect(response.headers()['content-type']).toBe('application/pdf');
@@ -58,6 +58,36 @@ test('image dialog opens, closes with Escape, and returns focus', async ({ page 
   await page.getByRole('button', { name: 'Close enlarged figure' }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(page.locator('body')).not.toHaveClass('dialog-open');
+});
+
+test('Figure 1 is visible on the homepage and opens at full resolution', async ({ page }) => {
+  await page.goto('./');
+  const figure = page.getByRole('button', { name: 'Enlarge Figure 1 overview' });
+  await expect(figure.locator('img')).toHaveAttribute('src', './figures/overview.png');
+  await figure.click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('#dialog-image')).toHaveAttribute('src', './figures/overview.png');
+  await page.keyboard.press('Escape');
+  await expect(figure).toBeFocused();
+});
+
+test('LaTeX is prerendered with local math fonts and long objectives stay contained', async ({ page, request }) => {
+  const html = await (await request.get('./')).text();
+  expect(html).toContain('class="katex-mathml"');
+  expect(html).not.toContain('$$');
+  await page.goto('./');
+  await page.locator('#method').scrollIntoViewIfNeeded();
+  await expect(page.locator('.advantage-math .katex-display')).toHaveCount(2);
+  await expect(page.locator('.advantage-math math')).toHaveCount(2);
+  await expect(page.locator('.katex-error')).toHaveCount(0);
+  await page.locator('.objective-panel summary').click();
+  await expect(page.locator('.objective-math .katex-display')).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  expect(await page.evaluate(() => document.fonts.check('16px KaTeX_Main'))).toBe(true);
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), `math overflow at ${width}px`).toBeLessThanOrEqual(width);
+  }
 });
 
 test('citation copies to the clipboard', async ({ page, context }) => {
@@ -111,5 +141,10 @@ test('paper and citation remain available without JavaScript', async ({ browser 
   await expect(page.locator('#bibtex')).toContainText('@misc{feng2026drmas');
   await expect(page.getByRole('link', { name: 'Tables 1 and 2 of the paper' })).toBeVisible();
   await expect(page.getByRole('navigation')).toBeVisible();
+  await page.locator('#method').scrollIntoViewIfNeeded();
+  await expect(page.locator('.advantage-math .katex-display')).toHaveCount(2);
+  await expect(page.locator('.advantage-math').first()).toBeVisible();
+  await page.locator('.objective-panel summary').click();
+  await expect(page.locator('.objective-math .katex-display')).toBeVisible();
   await context.close();
 });

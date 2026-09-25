@@ -12,7 +12,7 @@ Reinforcement Learning for Multi-Agent LLM Systems**.
 
 The review branch includes browser-rendered previews of the final paper-matched
 palette: [desktop homepage](review/desktop.png), [mobile homepage](review/mobile.png),
-and [interactive results](review/results.png). These review images are not bundled
+and [LaTeX method section](review/method.png), plus [interactive results](review/results.png). These review images are not bundled
 into the published site.
 
 The deployment workflow is intentionally provided as a template at
@@ -30,7 +30,9 @@ npm run dev
 ```
 
 The development server is available on port 5173. The site uses plain HTML, CSS,
-and JavaScript with Vite for development and production asset bundling. No backend,
+and JavaScript with Vite for development and production asset bundling. KaTeX
+prerenders the LaTeX equations into HTML and MathML during development/build, so
+equations render even without browser JavaScript. No backend,
 API key, tracking script, external font request, or runtime CDN is required.
 
 ```bash
@@ -44,7 +46,8 @@ npm run preview
 `dist/` is the deployable static site. End-to-end tests serve that artifact at
 `/DrMAS/`, not at the domain root, to catch GitHub Pages subpath issues. They cover
 all 16 result configurations, asset loading, responsive overflow, the figure
-dialog, clipboard success/failure, mobile navigation, and no-JavaScript access.
+dialog, clipboard success/failure, mobile navigation, LaTeX rendering, long
+equation overflow, local math fonts, and no-JavaScript access.
 
 ## Same-Repository GitHub Pages
 
@@ -102,12 +105,15 @@ address. If the repository name or domain changes, update those URLs as well.
 - `src/styles.css`: layout, typography, colors, responsive behavior, and reduced
   motion support.
 - `public/paper.pdf`: exact copy of `Dr__MAS_final.pdf`.
-- `public/figures/`: original Figures 2 and 3 cropped from the PDF, not synthetic
+- `public/figures/`: original Figures 1, 2, and 3 cropped from the PDF, not synthetic
   or reconstructed experimental plots.
 - `public/citation.bib`: downloadable citation; keep it synchronized with the
   visible citation in `index.html`. A test checks they match.
 - `public/fonts/`: self-hosted Space Grotesk, DM Sans, and IBM Plex Mono from Google
   Fonts, distributed with their SIL Open Font License files.
+- `scripts/render-math.mjs`: build-time KaTeX rendering, with malformed LaTeX
+  treated as a build error. KaTeX CSS and fonts are bundled locally; its license
+  is included in `public/fonts/KaTeX-LICENSE.txt`.
 
 The arXiv identifier `2602.08847` and Hugging Face model collection are taken from
 the existing repository README. The BibTeX uses that arXiv identifier and the
@@ -116,8 +122,20 @@ badge is displayed.
 
 The visual palette follows the paper: Dr. MAS purple `#8c569b` and GRPO orange
 `#f7b06f` are taken directly from Figure 3's vector colors. Highlighted result
-cells use the original Tables 1-2 background `#eef0f2`. Soft lavender surfaces
-and a dark plum method section extend that palette without altering the figures.
+cells use the original Tables 1-2 background `#eef0f2`. White and very light
+lavender surfaces keep the focus on the paper's figures and equations.
+
+Write display equations with `$$...$$` inside an element marked `data-math`.
+For example:
+
+```html
+<div class="math-block" data-math>
+  $$ A_{\mathrm{agent}}^{i,k} = \frac{R^i - \mu_k}{\sigma_k} $$
+</div>
+```
+
+Use `<span data-math>\(Y_k\)</span>` for inline math. The explicit marker prevents
+ordinary dollar amounts elsewhere on the page from being interpreted as LaTeX.
 
 To regenerate paper assets after replacing the manuscript:
 

@@ -12,6 +12,7 @@ FIGURES.mkdir(parents=True, exist_ok=True)
 with pymupdf.open(ROOT / "Dr__MAS_final.pdf") as document:
     # PDF coordinates are in points; exclude captions and surrounding body text.
     for name, page, bounds in [
+        ("overview", 0, (108, 518, 503, 665)),
         ("framework", 5, (106, 69, 506, 167)),
         ("training-dynamics", 7, (106, 320, 506, 394)),
     ]:
@@ -22,4 +23,4 @@ with pymupdf.open(ROOT / "Dr__MAS_final.pdf") as document:
         ).save(FIGURES / f"{name}.png")
 
 shutil.copyfile(ROOT / "Dr__MAS_final.pdf", ROOT / "public" / "paper.pdf")
-print("Exported framework, training dynamics, and paper PDF.")
+print("Exported overview, framework, training dynamics, and paper PDF.")

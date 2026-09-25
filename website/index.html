@@ -46,9 +46,9 @@
       <section class="hero" aria-labelledby="paper-title">
         <div class="hero-grid" aria-hidden="true"></div>
         <div class="container hero-content">
-          <div class="eyebrow hero-eyebrow"><span class="status-dot"></span> Multi-agent intelligence, trained together</div>
-          <h1 id="paper-title"><span class="hero-name">Dr. MAS<span class="title-dot">.</span></span><span class="hero-title">Stable Reinforcement Learning<br class="desktop-break" /> for Multi-Agent LLM Systems</span></h1>
-          <p class="hero-description">A simple recipe for stable learning.<br class="mobile-break" /> A unified framework for collaborative intelligence.</p>
+          <div class="eyebrow hero-eyebrow">Multi-agent reinforcement learning</div>
+          <h1 id="paper-title"><span class="hero-name">Dr. MAS</span><span class="hero-title">Stable Reinforcement Learning<br class="desktop-break" /> for Multi-Agent LLM Systems</span></h1>
+          <p class="hero-description">Agent-wise normalization. Stable learning. Efficient multi-LLM co-training.</p>
           <div class="authors" aria-label="Paper authors">
             <a href="https://github.com/langfengQ" target="_blank" rel="noopener noreferrer">Lang Feng</a>
             <span>Longtao Zheng</span><span>Shuo He</span><span>Fuxiang Zhang</span>
@@ -62,25 +62,14 @@
           </div>
           <div class="resource-links"><a href="https://arxiv.org/abs/2602.08847" target="_blank" rel="noopener noreferrer">arXiv: 2602.08847 <span aria-hidden="true">&nearr;</span></a><span aria-hidden="true">/</span><a href="https://huggingface.co/collections/langfeng01/dr-mas" target="_blank" rel="noopener noreferrer">Models on Hugging Face <span aria-hidden="true">&nearr;</span></a></div>
 
-          <div class="teaser">
-            <div class="teaser-copy">
-              <span class="eyebrow">The core idea</span>
-              <h2>Different roles.<br />Their own <span>baselines.</span></h2>
-              <p>One global baseline doesn't fit every agent. Normalize locally. Learn together.</p>
-              <a class="text-link" href="#method">Meet agent-wise normalization <svg class="icon" aria-hidden="true"><use href="#icon-arrow" /></svg></a>
-            </div>
-            <div class="agent-diagram" role="img" aria-label="A shared outcome reward is normalized with each agent's own mean and standard deviation, calibrating the scale of their policy updates.">
-              <div class="shared-reward"><span class="reward-symbol">R</span> Shared outcome reward</div>
-              <div class="distribution-lines" aria-hidden="true"><span></span><span></span><span></span></div>
-              <div class="agent-row">
-                <div class="agent agent-one"><span class="agent-label"><i></i> Agent 01</span><svg class="agent-glyph" viewBox="0 0 60 40" aria-hidden="true"><path d="M4 34h52M12 28V16h12V4h12v12h12v12M24 28h12" /></svg><span class="agent-stats">&mu;<sub>1</sub> <span>/</span> &sigma;<sub>1</sub></span><span class="agent-caption">Own baseline</span></div>
-                <div class="agent agent-two"><span class="agent-label"><i></i> Agent 02</span><svg class="agent-glyph" viewBox="0 0 60 40" aria-hidden="true"><path d="m30 3 23 17-23 17L7 20 30 3Zm0 11 9 6-9 6-9-6 9-6Z" /></svg><span class="agent-stats">&mu;<sub>2</sub> <span>/</span> &sigma;<sub>2</sub></span><span class="agent-caption">Own baseline</span></div>
-                <div class="agent agent-three"><span class="agent-label"><i></i> Agent 03</span><svg class="agent-glyph" viewBox="0 0 60 40" aria-hidden="true"><circle cx="22" cy="20" r="15" /><circle cx="38" cy="20" r="15" /><path d="M30 7v26" /></svg><span class="agent-stats">&mu;<sub>3</sub> <span>/</span> &sigma;<sub>3</sub></span><span class="agent-caption">Own baseline</span></div>
-              </div>
-              <div class="update-line"><span></span><svg class="icon" aria-hidden="true"><use href="#icon-check" /></svg> Calibrated updates. Stable co-training.<span></span></div>
-            </div>
-            <div class="teaser-footer"><span><i class="small-dot"></i> Agent-wise normalization</span><span><i class="small-dot"></i> Heterogeneous LLMs</span><span><i class="small-dot"></i> Shared GPU pool</span></div>
-          </div>
+          <figure class="paper-overview" id="paper-overview">
+            <div class="overview-labels"><span><b>01</b> Algorithmic stability</span><span><b>02</b> System-level flexibility</span></div>
+            <button class="figure-zoom" data-figure="./figures/overview.png" data-caption="Figure 1. Agent-wise normalization stabilizes multi-agent RL; Dr. MAS also enables co-training of multiple LLM actors." aria-label="Enlarge Figure 1 overview">
+              <img src="./figures/overview.png" width="1975" height="735" alt="Figure 1 from the paper. Left: GRPO uses a global advantage baseline for all agents and exhibits gradient spikes, whereas Dr. MAS uses an agent-specific baseline and stable gradients. Right: existing single-actor frameworks are contrasted with Dr. MAS co-training multiple LLM actors." fetchpriority="high" />
+              <span class="zoom-hint"><svg class="icon" aria-hidden="true"><use href="#icon-expand" /></svg> Explore Figure 1</span>
+            </button>
+            <figcaption><span>Figure 1</span> A simple change in the learning signal, paired with a framework built for multiple LLM actors.</figcaption>
+          </figure>
         </div>
       </section>
 
@@ -110,13 +99,56 @@
 
       <section id="method" class="method-section">
         <div class="container section">
-          <div class="section-heading split-heading reveal"><div><span class="eyebrow section-kicker">02 / Method</span><h2>The right baseline.<br />For every agent.</h2></div><p>Keep the cooperative reward.<br />Change how each agent learns from it.</p></div>
+          <div class="section-heading split-heading reveal"><div><span class="eyebrow section-kicker">02 / Method</span><h2>One shared reward.<br />An advantage for each agent.</h2></div><p>The distinction in Figure 1:<br />global statistics versus agent-wise statistics.</p></div>
           <div class="normalization-comparison reveal">
-            <article class="normalization-card global-card"><div class="card-topline"><span class="eyebrow">Vanilla GRPO</span><span class="tag">Global statistics</span></div><h3>One size doesn't fit all.</h3><div class="formula" role="math" aria-label="A global i equals R i minus mu, divided by sigma"><span>A<sub>i</sub><sup>global</sup></span><span>=</span><span class="fraction"><span>R<sub>i</sub> &minus; &mu;</span><span>&sigma;</span></span></div><p>Different roles see different reward distributions. A shared mean and standard deviation can inflate individual gradient scales.</p><span class="normalization-outcome"><i></i> Mismatched baselines &rarr; gradient spikes</span></article>
-            <div class="comparison-arrow" aria-hidden="true"><svg class="icon"><use href="#icon-arrow" /></svg></div>
-            <article class="normalization-card agent-card"><div class="card-topline"><span class="eyebrow">Dr. MAS</span><span class="tag">Agent-wise statistics</span></div><h3>Local statistics. Collective progress.</h3><div class="formula" role="math" aria-label="A agent i k equals R i minus mu k, divided by sigma k"><span>A<sub>i,k</sub><sup>agent</sup></span><span>=</span><span class="fraction"><span>R<sub>i</sub> &minus; <em>&mu;<sub>k</sub></em></span><span><em>&sigma;<sub>k</sub></em></span></span></div><p>Compute each agent's mean and standard deviation over its own active steps, then normalize its advantages with those statistics.</p><span class="normalization-outcome"><svg class="icon" aria-hidden="true"><use href="#icon-check" /></svg> Calibrated scales &rarr; more stable learning</span></article>
+            <article class="normalization-card global-card">
+              <div class="card-topline"><span class="method-name">GRPO</span><span class="tag">Global baseline</span></div>
+              <h3>The same statistics for every role.</h3>
+              <div class="math-block advantage-math" data-math>
+                $$ A_{\mathrm{global}}^{i} = \frac{R^{i} - \mu}{\sigma} $$
+              </div>
+              <p>All agents inherit the same normalized advantage, even when their active steps follow different reward distributions.</p>
+              <div class="normalization-outcome"><span class="outcome-dot"></span> Baseline mismatch can inflate gradient norms.</div>
+            </article>
+            <article class="normalization-card agent-card">
+              <div class="card-topline"><span class="method-name">Dr. MAS</span><span class="tag">Agent-wise baseline</span></div>
+              <h3>Each role learns on its own scale.</h3>
+              <div class="math-block advantage-math" data-math>
+                $$ A_{\mathrm{agent}}^{i,k} = \frac{R^{i} - \color{#8c569b}{\mu_k}}{\color{#8c569b}{\sigma_k}} $$
+              </div>
+              <p>Normalize each agent's advantage with the reward statistics of its own active steps, keeping update scales better calibrated.</p>
+              <div class="normalization-outcome"><span class="outcome-dot"></span> Agent-wise normalization stabilizes co-training.</div>
+            </article>
           </div>
-          <p class="method-footnote">The statistics are action-weighted: a trajectory's reward contributes once for every step in which the agent is active. <a href="./paper.pdf#page=5" target="_blank" rel="noopener">See Section 4.2 <span aria-hidden="true">&nearr;</span></a></p>
+          <div class="statistics-panel reveal">
+            <div class="statistics-intro"><h3>Statistics that follow the agent.</h3><p>For the set of outputs <span data-math>\(Y_k\)</span> where agent <span data-math>\(k\)</span> is active:</p></div>
+            <div class="statistics-equations">
+              <div class="math-block" data-math>$$ \mu_k = \frac{1}{|Y_k|} \sum_{a_t^i \in Y_k} R^i $$</div>
+              <div class="math-block" data-math>$$ \sigma_k^2 = \frac{1}{|Y_k|} \sum_{a_t^i \in Y_k} (R^i - \mu_k)^2 $$</div>
+            </div>
+            <p class="method-footnote">These are action-weighted statistics: a trajectory's reward contributes once for every step in which the agent is active. <a href="./paper.pdf#page=5" target="_blank" rel="noopener">Section 4.2 <span aria-hidden="true">&nearr;</span></a></p>
+          </div>
+          <details class="objective-panel">
+            <summary><span><span class="eyebrow">Inside the update</span> A shared objective, with agent-specific advantages</span><span class="objective-plus" aria-hidden="true">+</span></summary>
+            <div class="objective-content">
+              <p>As illustrated in Figure 1, the clipped group-relative objective is retained. Dr. MAS replaces the global advantage with <span data-math>\(A_{\mathrm{agent}}^{i,k}\)</span> for each agent.</p>
+              <div class="math-scroll" tabindex="0" role="region" aria-label="Scrollable per-agent optimization objective">
+                <div class="math-block objective-math" data-math>
+                  $$ \mathcal{J}_k(\theta_k) =
+                  \mathbb{E}_{x \sim p(\mathcal{X})}\!\left[
+                    \frac{1}{|Y_k|} \sum_{a_t^i \in Y_k}
+                    \min\!\left(
+                      \rho_{\theta_k}(a_t^i) A_{\mathrm{agent}}^{i,k},\;
+                      \operatorname{clip}\!\left(\rho_{\theta_k}(a_t^i), 1 \pm \epsilon\right)
+                      A_{\mathrm{agent}}^{i,k}
+                    \right)
+                  \right] $$
+                </div>
+              </div>
+              <p class="objective-scroll-hint">Scroll horizontally to view the full objective.</p>
+              <p class="objective-note">The importance-sampling ratio is <span data-math>\(\rho_{\theta_k}(a_t^i) = \pi_{\theta_k}(a_t^i \mid s_t^i) / \pi_{\theta_k^{\mathrm{old}}}(a_t^i \mid s_t^i)\)</span>. As in the paper's presentation, the KL regularization term is omitted here for clarity.</p>
+            </div>
+          </details>
           <div class="stability-panel reveal"><div class="stability-heading"><div><span class="eyebrow">Training dynamics</span><h3>Less noise. More learning.</h3></div><span class="figure-tag">Qwen2.5-3B / Non-sharing</span></div><figure><button class="figure-zoom" data-figure="./figures/training-dynamics.png" data-caption="Figure 3. Training accuracy and per-agent gradient norms for three-agent search, Qwen2.5-3B, LLM non-sharing." aria-label="Enlarge training dynamics figure"><img src="./figures/training-dynamics.png" width="1980" height="363" alt="Original paper plots compare training accuracy and verifier, answer, and search gradient norms. Dr. MAS substantially reduces the large gradient spikes seen with GRPO." loading="lazy" /><span class="zoom-hint"><svg class="icon" aria-hidden="true"><use href="#icon-expand" /></svg> Expand figure</span></button><figcaption>Figure 3 from the paper. Agent-wise normalization smooths gradient norms across the three-agent search system.</figcaption></figure></div>
         </div>
       </section>
