@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#faf9fb" />
+    <meta name="description" content="Dr. MAS is a simple, stable reinforcement learning recipe and scalable framework for cooperative multi-agent LLM systems. Research from Nanyang Technological University." />
+    <link rel="canonical" href="https://langfengq.github.io/DrMAS/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://langfengq.github.io/DrMAS/" />
+    <meta property="og:title" content="Dr. MAS | Stable Reinforcement Learning for Multi-Agent LLM Systems" />
+    <meta property="og:description" content="Different roles. Their own baselines. Stable multi-agent learning with agent-wise normalization and shared GPU resource pooling." />
+    <meta name="citation_title" content="Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems" />
+    <meta name="citation_author" content="Lang Feng" />
+    <meta name="citation_author" content="Longtao Zheng" />
+    <meta name="citation_author" content="Shuo He" />
+    <meta name="citation_author" content="Fuxiang Zhang" />
+    <meta name="citation_author" content="Bo An" />
+    <meta name="citation_publication_date" content="2026" />
+    <meta name="citation_pdf_url" content="https://langfengq.github.io/DrMAS/paper.pdf" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="preload" href="./fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <title>Dr. MAS | Stable Reinforcement Learning for Multi-Agent LLM Systems</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="nav-wrap container">
+        <a class="wordmark" href="#" aria-label="Dr. MAS home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          Dr. MAS<span class="wordmark-dot">.</span>
+        </a>
+        <button class="menu-toggle" aria-expanded="false" aria-controls="navigation" aria-label="Open navigation"><span></span><span></span></button>
+        <nav id="navigation" aria-label="Main navigation">
+          <a href="#overview">Overview</a>
+          <a href="#method">Method</a>
+          <a href="#results">Results</a>
+          <a href="#citation">BibTeX</a>
+          <a class="nav-code" href="https://github.com/langfengQ/DrMAS" target="_blank" rel="noopener noreferrer">View code <svg class="icon" aria-hidden="true"><use href="#icon-up-right" /></svg></a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="paper-title">
+        <div class="hero-grid" aria-hidden="true"></div>
+        <div class="container hero-content">
+          <div class="eyebrow hero-eyebrow"><span class="status-dot"></span> Multi-agent intelligence, trained together</div>
+          <h1 id="paper-title"><span class="hero-name">Dr. MAS<span class="title-dot">.</span></span><span class="hero-title">Stable Reinforcement Learning<br class="desktop-break" /> for Multi-Agent LLM Systems</span></h1>
+          <p class="hero-description">A simple recipe for stable learning.<br class="mobile-break" /> A unified framework for collaborative intelligence.</p>
+          <div class="authors" aria-label="Paper authors">
+            <a href="https://github.com/langfengQ" target="_blank" rel="noopener noreferrer">Lang Feng</a>
+            <span>Longtao Zheng</span><span>Shuo He</span><span>Fuxiang Zhang</span>
+            <a href="mailto:boan@ntu.edu.sg">Bo An<sup title="Corresponding author">*</sup></a>
+          </div>
+          <p class="affiliation">Nanyang Technological University, Singapore</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="./paper.pdf" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true"><use href="#icon-paper" /></svg> Read the paper <svg class="icon button-arrow" aria-hidden="true"><use href="#icon-up-right" /></svg></a>
+            <a class="button button-secondary" href="https://github.com/langfengQ/DrMAS" target="_blank" rel="noopener noreferrer"><svg class="icon" aria-hidden="true"><use href="#icon-github" /></svg> Code</a>
+            <a class="button button-quiet" href="#citation"><svg class="icon" aria-hidden="true"><use href="#icon-quote" /></svg> Cite this work</a>
+          </div>
+          <div class="resource-links"><a href="https://arxiv.org/abs/2602.08847" target="_blank" rel="noopener noreferrer">arXiv: 2602.08847 <span aria-hidden="true">&nearr;</span></a><span aria-hidden="true">/</span><a href="https://huggingface.co/collections/langfeng01/dr-mas" target="_blank" rel="noopener noreferrer">Models on Hugging Face <span aria-hidden="true">&nearr;</span></a></div>
+
+          <div class="teaser">
+            <div class="teaser-copy">
+              <span class="eyebrow">The core idea</span>
+              <h2>Different roles.<br />Their own <span>baselines.</span></h2>
+              <p>One global baseline doesn't fit every agent. Normalize locally. Learn together.</p>
+              <a class="text-link" href="#method">Meet agent-wise normalization <svg class="icon" aria-hidden="true"><use href="#icon-arrow" /></svg></a>
+            </div>
+            <div class="agent-diagram" role="img" aria-label="A shared outcome reward is normalized with each agent's own mean and standard deviation, calibrating the scale of their policy updates.">
+              <div class="shared-reward"><span class="reward-symbol">R</span> Shared outcome reward</div>
+              <div class="distribution-lines" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="agent-row">
+                <div class="agent agent-one"><span class="agent-label"><i></i> Agent 01</span><svg class="agent-glyph" viewBox="0 0 60 40" aria-hidden="true"><path d="M4 34h52M12 28V16h12V4h12v12h12v12M24 28h12" /></svg><span class="agent-stats">&mu;<sub>1</sub> <span>/</span> &sigma;<sub>1</sub></span><span class="agent-caption">Own baseline</span></div>
+                <div class="agent agent-two"><span class="agent-label"><i></i> Agent 02</span><svg class="agent-glyph" viewBox="0 0 60 40" aria-hidden="true"><path d="m30 3 23 17-23 17L7 20 30 3Zm0 11 9 6-9 6-9-6 9-6Z" /></svg><span class="agent-stats">&mu;<sub>2</sub> <span>/</span> &sigma;<sub>2</sub></span><span class="agent-caption">Own baseline</span></div>
+                <div class="agent agent-three"><span class="agent-label"><i></i> Agent 03</span><svg class="agent-glyph" viewBox="0 0 60 40" aria-hidden="true"><circle cx="22" cy="20" r="15" /><circle cx="38" cy="20" r="15" /><path d="M30 7v26" /></svg><span class="agent-stats">&mu;<sub>3</sub> <span>/</span> &sigma;<sub>3</sub></span><span class="agent-caption">Own baseline</span></div>
+              </div>
+              <div class="update-line"><span></span><svg class="icon" aria-hidden="true"><use href="#icon-check" /></svg> Calibrated updates. Stable co-training.<span></span></div>
+            </div>
+            <div class="teaser-footer"><span><i class="small-dot"></i> Agent-wise normalization</span><span><i class="small-dot"></i> Heterogeneous LLMs</span><span><i class="small-dot"></i> Shared GPU pool</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="highlights container" aria-label="Research highlights">
+        <div class="highlight"><span class="metric-value">+5.6<span>%</span></span><h2>Better math reasoning</h2><p>Relative avg@16 improvement</p></div>
+        <div class="highlight"><span class="metric-value">+15.2<span>%</span></span><h2>Stronger multi-turn search</h2><p>Relative avg@16 improvement</p></div>
+        <div class="highlight"><span class="metric-value">31.6<span>%</span><svg class="metric-down" viewBox="0 0 24 24" aria-label="reduction" role="img"><path d="M12 3v17m-7-7 7 7 7-7" /></svg></span><h2>Lower inference latency</h2><p>With heterogeneous model assignment</p></div>
+        <p class="highlights-note">Performance gains over multi-agent GRPO, as reported in the paper. Latency compares heterogeneous vs. all-7B agents. See <a href="#results">experimental results</a> for settings.</p>
+      </section>
+
+      <section id="overview" class="section container overview-section">
+        <div class="section-heading reveal"><span class="eyebrow section-kicker">01 / Overview</span><h2>Collaboration needs<br />a better learning signal.</h2></div>
+        <div class="overview-grid">
+          <div class="abstract reveal">
+            <span class="eyebrow muted">Abstract</span>
+            <p>Multi-agent LLM systems improve reasoning and tool use via role specialization, yet reinforcement learning (RL) post-training for such systems remains unstable and underexplored. We theoretically pinpoint a key source of instability when extending group-based RL to cooperative multi-agent LLM systems: under GRPO-style optimization, <strong>a global normalization baseline can mismatch heterogeneous agents' reward distributions</strong>, inducing gradient-norm instability.</p>
+            <p>Based on this finding, we propose <strong>Dr. MAS</strong>, a simple and stable RL recipe for cooperative multi-agent LLM systems. Algorithmically, Dr. MAS normalizes advantages per agent using each agent's own reward statistics, which calibrates gradient scales and dramatically stabilizes the training. Systemically, Dr. MAS provides an end-to-end multi-agent RL framework with scalable orchestration, flexible per-agent LLM serving and optimization, and shared resource scheduling of actor backends.</p>
+            <details class="abstract-more"><summary>Read the full abstract <span aria-hidden="true">+</span></summary><p>Unlike single-actor frameworks such as veRL, Dr. MAS natively supports multiple heterogeneous LLMs over a unified GPU pool. Lifecycle-aware backend management and dynamic dispatch release inactive models' GPU memory and schedule active agents on demand, enabling hardware-efficient co-training. We evaluate Dr. MAS on multi-agent math reasoning and multi-turn search with Qwen2.5 and Qwen3. Dr. MAS achieves clear gains over vanilla GRPO (e.g., +5.6% avg@16 and +4.6% pass@16 on math, and +15.2% avg@16 and +13.1% pass@16 on search) while largely eliminating gradient spikes. It also remains highly effective under heterogeneous agent-model assignments while improving efficiency.</p></details>
+          </div>
+          <div class="contributions reveal">
+            <article><span class="contribution-number">01</span><div><h3>Understand the instability</h3><p>A theoretical analysis connects mismatched global reward statistics to inflated per-agent gradient norms.</p></div></article>
+            <article><span class="contribution-number">02</span><div><h3>Calibrate every agent</h3><p>Agent-wise advantage normalization aligns update scales with each role's own reward distribution.</p></div></article>
+            <article><span class="contribution-number">03</span><div><h3>Train as one system</h3><p>Flexible orchestration, per-model optimization, and lifecycle-aware scheduling in a unified GPU pool.</p></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="method" class="method-section">
+        <div class="container section">
+          <div class="section-heading split-heading reveal"><div><span class="eyebrow section-kicker">02 / Method</span><h2>The right baseline.<br />For every agent.</h2></div><p>Keep the cooperative reward.<br />Change how each agent learns from it.</p></div>
+          <div class="normalization-comparison reveal">
+            <article class="normalization-card global-card"><div class="card-topline"><span class="eyebrow">Vanilla GRPO</span><span class="tag">Global statistics</span></div><h3>One size doesn't fit all.</h3><div class="formula" role="math" aria-label="A global i equals R i minus mu, divided by sigma"><span>A<sub>i</sub><sup>global</sup></span><span>=</span><span class="fraction"><span>R<sub>i</sub> &minus; &mu;</span><span>&sigma;</span></span></div><p>Different roles see different reward distributions. A shared mean and standard deviation can inflate individual gradient scales.</p><span class="normalization-outcome"><i></i> Mismatched baselines &rarr; gradient spikes</span></article>
+            <div class="comparison-arrow" aria-hidden="true"><svg class="icon"><use href="#icon-arrow" /></svg></div>
+            <article class="normalization-card agent-card"><div class="card-topline"><span class="eyebrow">Dr. MAS</span><span class="tag">Agent-wise statistics</span></div><h3>Local statistics. Collective progress.</h3><div class="formula" role="math" aria-label="A agent i k equals R i minus mu k, divided by sigma k"><span>A<sub>i,k</sub><sup>agent</sup></span><span>=</span><span class="fraction"><span>R<sub>i</sub> &minus; <em>&mu;<sub>k</sub></em></span><span><em>&sigma;<sub>k</sub></em></span></span></div><p>Compute each agent's mean and standard deviation over its own active steps, then normalize its advantages with those statistics.</p><span class="normalization-outcome"><svg class="icon" aria-hidden="true"><use href="#icon-check" /></svg> Calibrated scales &rarr; more stable learning</span></article>
+          </div>
+          <p class="method-footnote">The statistics are action-weighted: a trajectory's reward contributes once for every step in which the agent is active. <a href="./paper.pdf#page=5" target="_blank" rel="noopener">See Section 4.2 <span aria-hidden="true">&nearr;</span></a></p>
+          <div class="stability-panel reveal"><div class="stability-heading"><div><span class="eyebrow">Training dynamics</span><h3>Less noise. More learning.</h3></div><span class="figure-tag">Qwen2.5-3B / Non-sharing</span></div><figure><button class="figure-zoom" data-figure="./figures/training-dynamics.png" data-caption="Figure 3. Training accuracy and per-agent gradient norms for three-agent search, Qwen2.5-3B, LLM non-sharing." aria-label="Enlarge training dynamics figure"><img src="./figures/training-dynamics.png" width="1980" height="363" alt="Original paper plots compare training accuracy and verifier, answer, and search gradient norms. Dr. MAS substantially reduces the large gradient spikes seen with GRPO." loading="lazy" /><span class="zoom-hint"><svg class="icon" aria-hidden="true"><use href="#icon-expand" /></svg> Expand figure</span></button><figcaption>Figure 3 from the paper. Agent-wise normalization smooths gradient norms across the three-agent search system.</figcaption></figure></div>
+        </div>
+      </section>
+
+      <section id="framework" class="section container framework-section">
+        <div class="section-heading split-heading reveal"><div><span class="eyebrow section-kicker">Built for the whole team</span><h2>Many agents.<br />One training framework.</h2></div><p>From orchestration to optimization,<br />without one GPU pool per agent.</p></div>
+        <figure class="framework-figure reveal"><button class="figure-zoom" data-figure="./figures/framework.png" data-caption="Figure 2. The Dr. MAS end-to-end multi-agent LLM reinforcement learning framework." aria-label="Enlarge framework diagram"><img src="./figures/framework.png" width="2000" height="490" alt="Dr. MAS framework: environment workers feed a multi-agent orchestrator, agents map to shared or separate LLM worker groups, a shared GPU pool schedules backends, and the RL trainer optimizes each worker group." loading="lazy" /><span class="zoom-hint"><svg class="icon" aria-hidden="true"><use href="#icon-expand" /></svg> Expand figure</span></button><figcaption><span>Figure 2 / System overview</span> Pluggable workflows. Flexible agent-model assignments. Resource-efficient co-training.</figcaption></figure>
+        <div class="framework-features reveal"><article><span class="feature-index">[ A ]</span><h3>Bring your workflow</h3><p>Sequential collaboration, conditional routing, and agent-specific active masking.</p></article><article><span class="feature-index">[ B ]</span><h3>Mix your models</h3><p>Share one LLM or assign different backends and optimization settings to different roles.</p></article><article><span class="feature-index">[ C ]</span><h3>Share your resources</h3><p>Resume active backends and offload inactive ones, releasing weights and KV caches on demand.</p></article></div>
+      </section>
+
+      <section id="results" class="results-section">
+        <div class="section container">
+          <div class="section-heading split-heading reveal"><div><span class="eyebrow section-kicker">03 / Experiments</span><h2>Stable training.<br />Measurable gains.</h2></div><p>Two workflows. Four model sizes.<br />Shared and independent LLM weights.</p></div>
+          <div class="results-explorer reveal" id="results-explorer" hidden>
+            <div class="results-toolbar"><div class="task-switch" role="group" aria-label="Evaluation task"><button type="button" data-task="math" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#icon-math" /></svg> Math reasoning</button><button type="button" data-task="search" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#icon-search" /></svg> Multi-turn search</button></div><a class="text-link table-source" href="./paper.pdf#page=7" target="_blank" rel="noopener">Table <span id="table-number">1</span> in paper <svg class="icon" aria-hidden="true"><use href="#icon-up-right" /></svg></a></div>
+            <div class="results-controls"><label class="model-control" for="model-select"><span class="eyebrow">Model</span><select id="model-select"><option value="8b">Qwen3-8B</option><option value="4b">Qwen3-4B</option></select></label><div class="control-group"><span class="eyebrow" id="assignment-label">Agent weights</span><div class="segmented" role="group" aria-labelledby="assignment-label"><button type="button" data-setting="shared" aria-pressed="true">Shared</button><button type="button" data-setting="separate" aria-pressed="false">Separate</button></div></div><div class="control-group metric-control"><span class="eyebrow" id="metric-label">Metric</span><div class="segmented" role="group" aria-labelledby="metric-label"><button type="button" data-metric="avg" aria-pressed="true">avg@16</button><button type="button" data-metric="pass" aria-pressed="false">pass@16</button></div></div></div>
+            <div class="result-summary"><div><span class="eyebrow">Multi-agent GRPO</span><strong id="baseline-average">57.8<span>%</span></strong></div><div class="summary-arrow" aria-hidden="true"><svg class="icon"><use href="#icon-arrow" /></svg></div><div class="drmas-summary"><span class="eyebrow">Dr. MAS</span><strong id="drmas-average">62.3<span>%</span></strong></div><div class="summary-gain"><span id="average-gain">+4.5 pp</span><p>Average across benchmarks</p></div></div>
+            <p id="result-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+            <div class="table-wrap" tabindex="0" role="region" aria-label="Scrollable benchmark results"><table class="results-table"><caption id="results-caption">Math reasoning with Qwen3-8B, shared weights, avg@16</caption><thead><tr><th scope="col">Benchmark</th><th scope="col" class="bar-column"><span class="chart-legend"><span><i class="legend-grpo"></i> GRPO</span><span><i class="legend-drmas"></i> Dr. MAS</span></span></th><th scope="col">GRPO</th><th scope="col">Dr. MAS</th><th scope="col">Gain <span class="muted">(pp)</span></th></tr></thead><tbody id="results-body"></tbody></table></div>
+            <div class="results-notes"><p>Scores are percentages. Gains are <strong>percentage-point (pp)</strong> differences between Dr. MAS and multi-agent GRPO in the same setting. Displayed values are transcribed from Tables 1 and 2; deltas use the rounded scores.</p><details><summary>What do avg@16 and pass@16 mean?</summary><p><strong>avg@16</strong> measures average correctness over 16 sampled attempts. <strong>pass@16</strong> measures whether at least one of those 16 attempts is correct. Shared weights means the logical agents use one shared LLM; separate weights means each agent has its own LLM parameters.</p></details></div>
+          </div>
+          <noscript><p class="no-script-message">The interactive results explorer requires JavaScript. All benchmark scores are available in <a href="./paper.pdf#page=7">Tables 1 and 2 of the paper</a>.</p></noscript>
+          <div class="efficiency-callout reveal"><div class="efficiency-copy"><span class="eyebrow">Heterogeneous by design</span><h3>Smaller specialists.<br />Nearly the same performance.</h3><p>Keep Qwen2.5-7B as the verifier. Use Llama-3.2-3B-Instruct for search and answering. The heterogeneous system preserves performance while reducing inference latency and estimated API cost.</p><a class="text-link" href="./paper.pdf#page=9" target="_blank" rel="noopener">Explore the efficiency study <svg class="icon" aria-hidden="true"><use href="#icon-up-right" /></svg></a></div><div class="efficiency-metrics"><div><span class="efficiency-number">31.6<small>%</small></span><span>lower latency</span><p>83.9 s &rarr; 57.4 s</p></div><div><span class="efficiency-number">41.8<small>%</small></span><span>lower estimated cost</span><p>$97.5 &rarr; $56.7</p></div><p class="efficiency-note">Figure 4: avg@16 42.5 &rarr; 42.0; pass@16 57.7 &rarr; 57.5. Cost estimated from OpenRouter prices over 51.7k test samples, not measured GPU training cost.</p></div></div>
+          <p class="limitations"><strong>Scope &amp; limitations.</strong> Evaluated on two representative workflows. Dr. MAS does not address every source of multi-agent RL instability, including credit assignment across agents and turns. Generalization to broader architectures and larger models remains open.</p>
+        </div>
+      </section>
+
+      <section id="citation" class="section container citation-section">
+        <div class="citation-intro reveal"><span class="eyebrow section-kicker">04 / Citation</span><h2>Build on<br />this work.</h2><p>If you find Dr. MAS useful in your research, please consider citing our paper.</p><a class="text-link" href="./citation.bib" download>Download .bib <svg class="icon" aria-hidden="true"><use href="#icon-download" /></svg></a></div>
+        <div class="citation-block reveal"><div class="citation-toolbar"><span class="eyebrow">BibTeX</span><button id="copy-citation" class="copy-button" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#icon-copy" /></svg><span>Copy citation</span></button></div><pre><code id="bibtex">@misc{feng2026drmas,
+  title  = {Dr. MAS: Stable Reinforcement Learning
+            for Multi-Agent LLM Systems},
+  author = {Feng, Lang and Zheng, Longtao and
+            He, Shuo and Zhang, Fuxiang and An, Bo},
+  year   = {2026},
+  eprint = {2602.08847},
+  archivePrefix = {arXiv},
+  url    = {https://arxiv.org/abs/2602.08847}
+}</code></pre><span class="copy-status" id="copy-status" role="status" aria-live="polite"></span></div>
+      </section>
+    </main>
+
+    <footer class="site-footer container"><a class="wordmark" href="#"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Dr. MAS<span class="wordmark-dot">.</span></a><p>Stable learning. Stronger collaboration.<br /><span>Nanyang Technological University &middot; 2026</span></p><a class="text-link" href="mailto:lang005@e.ntu.edu.sg">Get in touch <svg class="icon" aria-hidden="true"><use href="#icon-up-right" /></svg></a></footer>
+
+    <dialog class="figure-dialog" id="figure-dialog" aria-labelledby="figure-caption"><div class="dialog-toolbar"><span class="eyebrow">A closer look</span><button class="dialog-close" aria-label="Close enlarged figure"><svg class="icon" aria-hidden="true"><use href="#icon-close" /></svg></button></div><div class="dialog-image-wrap"><img id="dialog-image" alt="" /></div><p id="figure-caption"></p><a id="figure-original" class="text-link" target="_blank" rel="noopener">Open full-resolution image <svg class="icon" aria-hidden="true"><use href="#icon-up-right" /></svg></a></dialog>
+
+    <svg class="svg-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+      <symbol id="icon-up-right" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12" /></symbol>
+      <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-7-7 7 7-7 7" /></symbol>
+      <symbol id="icon-paper" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8l-5-5Zm0 0v5h5M8 12h8m-8 4h6" /></symbol>
+      <symbol id="icon-github" viewBox="0 0 24 24"><path d="M9 19c-4 1-4-2-6-2m12 5v-4c0-1 .1-1.8-.5-2.5 3.4-.4 6.5-1.7 6.5-6A4.8 4.8 0 0 0 19.7 6c.1-.4.6-1.9-.2-3.5 0 0-1.1-.4-3.6 1.3a12 12 0 0 0-6.6 0C6.8 2.1 5.7 2.5 5.7 2.5 4.9 4.1 5.4 5.6 5.5 6A4.8 4.8 0 0 0 4.2 9.5c0 4.3 3.1 5.6 6.5 6C10.1 16.2 10 17 10 18v4" /></symbol>
+      <symbol id="icon-quote" viewBox="0 0 24 24"><path d="M10 6H4v7h6V6Zm10 0h-6v7h6V6ZM10 13c0 4-2 5-5 5m15-5c0 4-2 5-5 5" /></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+      <symbol id="icon-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /></symbol>
+      <symbol id="icon-math" viewBox="0 0 24 24"><path d="M18 4H6l6 8-6 8h12" /></symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 8V3H4v13h4" /></symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" /></symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6" /></symbol>
+    </defs></svg>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

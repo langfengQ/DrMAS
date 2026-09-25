@@ -1,0 +1,83 @@
+name: Deploy Dr. MAS project page
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'website/**'
+      - 'src/**'
+      - 'public/**'
+      - 'tests/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - 'playwright.config.js'
+      - 'Dr__MAS_final.pdf'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/pages.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate website source
+        id: site
+        shell: bash
+        run: |
+          if [ -f website/package.json ]; then
+            echo 'directory=website' >> "$GITHUB_OUTPUT"
+          else
+            echo 'directory=.' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ steps.site.outputs.directory }}/package-lock.json
+      - name: Install dependencies
+        working-directory: ${{ steps.site.outputs.directory }}
+        run: npm ci
+      - name: Verify paper data
+        working-directory: ${{ steps.site.outputs.directory }}
+        run: npm test
+      - name: Build static site
+        working-directory: ${{ steps.site.outputs.directory }}
+        run: npm run build
+      - name: Install test browser
+        working-directory: ${{ steps.site.outputs.directory }}
+        run: npx playwright install --with-deps chromium
+      - name: Verify desktop, mobile, and GitHub Pages paths
+        working-directory: ${{ steps.site.outputs.directory }}
+        run: npm run test:e2e
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.site.outputs.directory }}/dist
+
+  deploy:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
