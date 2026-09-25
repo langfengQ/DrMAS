@@ -7,6 +7,9 @@ Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems
 </h1>
 
 <p align="center">
+<a href="https://langfengq.github.io/DrMAS/">
+<img src="https://img.shields.io/badge/Project-Page-8C569B" alt="Project Page">
+</a>
 <a href="https://arxiv.org/abs/2602.08847">
 <img src="https://img.shields.io/static/v1?label=arXiv&message=Paper&color=red" alt="arXiv Paper">
 </a>
@@ -29,6 +32,8 @@ Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems
 <img src="https://img.shields.io/github/stars/langfengQ/DrMAS?style=social" alt="Repo stars">
 </a>
 </p>
+
+The project-page source and visual previews are available in [website/](./website/README.md).
 
 `Dr.MAS` is designed for **end-to-end post-training** of **Multi-Agent LLM Systems** via **Reinforcement Learning (RL)**, enabling multiple LLM-based agents to collaborate on complex reasoning and decision-making tasks.
 

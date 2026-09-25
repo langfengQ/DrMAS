@@ -1,0 +1,106 @@
+/* Signed differences share one unbroken, zero-centered percentage-point axis. */
+.results-explorer {
+  --gain-positive: #8c569b;
+  --gain-negative: #f7b06f;
+  --gain-negative-ink: #9a5425;
+  --gain-neutral: #817388;
+}
+
+.gain-chart-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding-top: 11px;
+  margin-top: 24px;
+}
+
+.gain-chart-intro .eyebrow { color: var(--accent-text); font-size: 9px; }
+.gain-chart-intro h3 { margin-top: 7px; font-size: 20px; line-height: 1.35; letter-spacing: -.035em; }
+.gain-chart-intro > p { max-width: 345px; font-size: 10px; line-height: 1.7; color: var(--muted); }
+
+.gain-direction-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-block: 17px 15px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.gain-direction-legend > span { display: inline-flex; align-items: center; gap: 7px; }
+.gain-direction-legend i { display: inline-block; width: 18px; height: 7px; border-radius: 2px; }
+.gain-direction-legend .grpo-bar { background: var(--gain-negative); }
+.gain-direction-legend .drmas-bar { background: var(--gain-positive); }
+
+.results-table { table-layout: fixed; }
+.results-table th:first-child, .results-table td:first-child { width: 18%; }
+.results-table .bar-column { display: table-cell; width: 44%; padding-inline: 18px; }
+.results-table thead th { vertical-align: bottom; }
+.results-table .gain-cell { color: var(--gain-positive); font-size: 13px; font-weight: 600; letter-spacing: -.035em; }
+.results-table .gain-cell.negative { color: var(--gain-negative-ink); }
+.results-table .gain-cell.neutral { color: var(--gain-neutral); }
+.results-table .gain-cell::after { content: ' pp'; font-size: 8px; font-weight: 400; letter-spacing: 0; }
+.gain-column-title { display: block; text-align: center; color: var(--ink); font-size: 10px; }
+.gain-column-title > span { color: var(--muted); }
+
+.gain-axis { display: block; position: relative; height: 24px; margin-top: 10px; font-family: var(--mono); font-size: 9px; color: #706278; }
+.gain-axis-tick { position: absolute; top: 0; transform: translateX(-50%); font-weight: 400; }
+.gain-axis-tick::after { position: absolute; content: ''; width: 1px; height: 5px; background: #cfc2d4; top: 16px; left: 50%; }
+.gain-axis-tick:first-child { transform: none; }
+.gain-axis-tick:first-child::after { left: 0; }
+.gain-axis-tick:last-child { transform: translateX(-100%); }
+.gain-axis-tick:last-child::after { left: 100%; }
+.gain-axis-tick[data-value='0'] { color: var(--ink); font-weight: 600; }
+
+.gain-track {
+  position: relative;
+  height: 28px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #fbf1e8 50%, #f0e8f4 50%);
+}
+
+.gain-track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), #cbbbd04f calc(25% - 1px), #cbbbd04f 25%);
+}
+
+.gain-zero { position: absolute; inset-block: 0; left: 50%; width: 1px; background: #a895b1; }
+.gain-bar { position: absolute; top: 50%; left: var(--gain-start); width: var(--gain-width); height: 12px; transform: translateY(-50%); background: var(--gain-positive); border-radius: 2px; }
+.gain-marker { position: absolute; top: 50%; left: var(--gain-end); width: 3px; height: 17px; transform: translate(-50%, -50%); background: var(--gain-positive); border-radius: 1px; }
+.gain-track[data-direction='negative'] .gain-bar { background: var(--gain-negative); }
+.gain-track[data-direction='negative'] .gain-marker { background: var(--gain-negative-ink); }
+.gain-track[data-direction='neutral'] .gain-bar { display: none; }
+.gain-track[data-direction='neutral'] .gain-marker { width: 7px; height: 7px; border: 2px solid #fdfcfe; border-radius: 50%; background: var(--gain-neutral); }
+.results-table .average-row .gain-track { background: linear-gradient(90deg, #f7e9dc 50%, #e7d8ee 50%); }
+
+@media (max-width: 720px) {
+  .gain-chart-intro { flex-direction: column; gap: 9px; margin-top: 21px; }
+  .gain-chart-intro h3 { font-size: 19px; }
+  .gain-chart-intro > p { max-width: none; }
+  .gain-direction-legend { column-gap: 16px; font-size: 8px; }
+  .results-table, .results-table caption, .results-table thead, .results-table tbody { display: block; width: 100%; }
+  .results-table thead tr { display: block; }
+  .results-table thead th:not(.bar-column) { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .results-table thead .bar-column { display: block; width: 100%; padding: 5px 0 1px; border-bottom: 1px solid #ddd0e5; }
+  .gain-column-title { font-size: 10px; }
+  .gain-axis { margin-top: 9px; }
+  .results-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; grid-template-areas: 'benchmark benchmark gain' 'grpo drmas gain' 'plot plot plot'; gap: 7px 10px; padding-block: 14px; border-bottom: 1px solid #e5dbea; }
+  .results-table tbody th, .results-table tbody td { border: 0; padding: 0; width: auto; min-width: 0; text-align: left; }
+  .results-table tbody th:first-child { grid-area: benchmark; width: auto; font-size: 12px; font-weight: 600; }
+  .results-table tbody .bar-column { grid-area: plot; display: block; width: 100%; padding: 3px 0 0; }
+  .results-table .grpo-cell { grid-area: grpo; font-size: 11px; }
+  .results-table .drmas-cell { grid-area: drmas; font-size: 11px; }
+  .results-table .grpo-cell::before, .results-table .drmas-cell::before { content: attr(data-label) ' '; display: block; font-family: var(--mono); font-size: 8px; font-weight: 400; color: var(--muted); margin-bottom: 2px; }
+  .results-table .gain-cell { grid-area: gain; align-self: center; text-align: right; font-size: 17px; }
+  .results-table .gain-cell::after { display: block; font-size: 9px; margin-top: 1px; }
+  .results-table .average-row { border-radius: 4px; background: #eef0f2; margin-top: 8px; }
+  .results-table .average-row th { padding-left: 0; }
+  .results-table .average-row:last-child { border-bottom: 0; }
+  .gain-track { height: 26px; }
+}
