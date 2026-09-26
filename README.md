@@ -50,8 +50,8 @@ Dr. MAS is designed for **end-to-end post-training** of **Multi-Agent LLM System
 This framework features **flexible agent registry**, **customizable multi-agent orchestration**, **LLM sharing/non-sharing (e.g., heterogeneous LLMs)**, **per-agent configuration**, and **shared resource pooling**, making it well suited for training multi-agent LLM systems with RL.
 
 <p align="center">
-    <a href="./docs/drmas/drmas_framework.png">
-        <img src="./docs/drmas/drmas_framework.png" alt="Figure 2: The Dr. MAS framework connects environment workers, multi-agent orchestration, agent-model assignment, shared GPU scheduling, and per-worker-group optimization." width="100%">
+    <a href="./docs/drmas/drmas_framework_v2.png">
+        <img src="./docs/drmas/drmas_framework_v2.png" alt="Figure 2: The Dr. MAS framework connects environment workers, multi-agent orchestration, agent-model assignment, shared GPU scheduling, and per-worker-group optimization." width="100%">
     </a>
     <br>
     <em>Figure 2. The Dr. MAS framework for end-to-end multi-agent LLM RL.</em>
