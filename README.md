@@ -6,9 +6,14 @@
 Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems
 </h1>
 
+<h3 align="center">
+    <strong>NeurIPS 2026</strong><br>
+    MALGAI @ ICLR 2026
+</h3>
+
 <p align="center">
 <a href="https://langfengq.github.io/DrMAS/">
-<img src="https://img.shields.io/badge/Project-Page-8C569B" alt="Project Page">
+<img src="https://img.shields.io/badge/Project-Website-8C569B" alt="Project Website">
 </a>
 <a href="https://arxiv.org/abs/2602.08847">
 <img src="https://img.shields.io/static/v1?label=arXiv&message=Paper&color=red" alt="arXiv Paper">
@@ -25,22 +30,31 @@ Dr. MAS: Stable Reinforcement Learning for Multi-Agent LLM Systems
 <a href="https://github.com/langfengQ/DrMAS/blob/master/LICENSE">
 <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License">
 </a>
-<!-- <a href="https://github.com/langfengQ/DrMAS/issues">
-<img src="https://img.shields.io/github/issues/langfengQ/DrMAS" alt="GitHub issues">
-</a> -->
 <a href="https://github.com/langfengQ/DrMAS/stargazers">
 <img src="https://img.shields.io/github/stars/langfengQ/DrMAS?style=social" alt="Repo stars">
 </a>
 </p>
 
-The project-page source and visual previews are available in [website/](./website/README.md).
+**News:** 🎉 Dr. MAS has been accepted to **NeurIPS 2026!**
 
-`Dr.MAS` is designed for **end-to-end post-training** of **Multi-Agent LLM Systems** via **Reinforcement Learning (RL)**, enabling multiple LLM-based agents to collaborate on complex reasoning and decision-making tasks.
+Dr. MAS is designed for **end-to-end post-training** of **Multi-Agent LLM Systems** via **Reinforcement Learning (RL)**, enabling multiple LLM-based agents to collaborate on complex reasoning and decision-making tasks.
+
+<p align="center">
+    <a href="./docs/drmas/drmas_overview.png">
+        <img src="./docs/drmas/drmas_overview.png" alt="Figure 1: Dr. MAS uses agent-wise advantage normalization for stable reinforcement learning and supports co-training multiple LLM actors." width="100%">
+    </a>
+    <br>
+    <em>Figure 1. Agent-wise normalization for stable multi-LLM RL.</em>
+</p>
 
 This framework features **flexible agent registry**, **customizable multi-agent orchestration**, **LLM sharing/non-sharing (e.g., heterogeneous LLMs)**, **per-agent configuration**, and **shared resource pooling**, making it well suited for training multi-agent LLM systems with RL.
 
 <p align="center">
-    <img src="./docs/drmas/drmas_framework.png" alt="framework" width="100%">
+    <a href="./docs/drmas/drmas_framework.png">
+        <img src="./docs/drmas/drmas_framework.png" alt="Figure 2: The Dr. MAS framework connects environment workers, multi-agent orchestration, agent-model assignment, shared GPU scheduling, and per-worker-group optimization." width="100%">
+    </a>
+    <br>
+    <em>Figure 2. The Dr. MAS framework for end-to-end multi-agent LLM RL.</em>
 </p>
 
 # Feature Summary
@@ -54,7 +68,7 @@ This framework features **flexible agent registry**, **customizable multi-agent 
 | **Shared Resource Pooling** | ✅ Shared GPU pool across multiple LLM worker groups for efficient hardware utilization<br>✅ Gradient updates applied independently for each worker group during optimization |
 | **Environments**         | ✅ Math<br>✅ Search |
 | **Model Support**        | ✅ Qwen2.5<br>✅ Qwen3<br>✅ LLaMA3.2<br>and more |
-| **RL Algorithms**        | ✅ Dr.MAS<br>✅ GRPO<br>🧪 GiGPO (experimental)<br>🧪 DAPO (experimental) <br>🧪 RLOO (experimental) <br>🧪 PPO (experimental) <br>and more |
+| **RL Algorithms**        | ✅ Dr. MAS<br>✅ GRPO<br>✅ GiGPO<br>✅ DAPO <br>✅ RLOO <br>✅ PPO <br>and more |
 
 # Table of Contents
 

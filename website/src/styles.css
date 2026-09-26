@@ -98,12 +98,13 @@ sup { font-size: .55em; }
 .hero::before { content: ''; position: absolute; z-index: -1; width: 900px; max-width: 100%; height: 550px; top: 0; left: 50%; transform: translateX(-50%); background: radial-gradient(ellipse at 50% 0, #ebdfef9c, transparent 70%); pointer-events: none; }
 .hero-content { text-align: center; }
 .hero-topline { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; }
-.venue-badge { display: inline-flex; align-items: center; color: var(--accent-strong); border: 1px solid #cdb9d6; background: #f3edf6; padding: 5px 10px; font: 14px var(--mono); border-radius: 4px; letter-spacing: .035em; }
+.venue-badge { display: inline-flex; align-items: center; color: var(--accent-strong); border: 1px solid #cdb9d6; background: #f3edf6; padding: 5px 10px; font: 14px var(--mono); border-radius: 4px; letter-spacing: .035em; white-space: nowrap; }
+.venue-workshop { color: var(--muted); border-color: var(--line); background: transparent; }
 .hero-eyebrow { display: inline-flex; gap: 10px; align-items: center; color: #7d6686; font-size: 10px; letter-spacing: .11em; }
 .hero h1 { margin-top: 18px; }
 .hero-name { display: block; font-size: clamp(48px, 5vw, 64px); font-weight: 600; letter-spacing: -.055em; line-height: 1.1; color: var(--accent); }
 .hero-title { display: block; font-size: clamp(26px, 3.2vw, 42px); letter-spacing: -.04em; line-height: 1.22; margin-top: 12px; font-weight: 500; }
-.hero-description { color: var(--muted); font-size: 15px; margin-top: 18px; }
+.hero-description { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 15px; margin-top: 18px; }
 .authors { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 23px; margin-top: 23px; font-size: 15px; font-weight: 500; }
 .authors a { text-decoration-color: var(--line); text-decoration-line: underline; text-underline-offset: 4px; }
 .authors a:hover { color: var(--accent); text-decoration-color: var(--accent); }
